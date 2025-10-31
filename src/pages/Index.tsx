@@ -3,7 +3,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, MessageSquare, Lightbulb, ArrowRight, TrendingUp, Sparkles } from "lucide-react";
+import { BarChart3, Lightbulb, ArrowRight, TrendingUp, Sparkles, FileText } from "lucide-react";
 
 const Index = () => {
   return (
@@ -37,16 +37,16 @@ const Index = () => {
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
                 <Button asChild size="lg" className="gap-2 shadow-elevated text-base hover:scale-105 transition-transform">
-                  <Link to="/analyze">
+                  <Link to="/exam">
                     <BarChart3 className="h-5 w-5" />
-                    Analyze Data
+                    Take Exam
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="gap-2 text-base hover:scale-105 transition-transform">
-                  <Link to="/opinions">
-                    <MessageSquare className="h-5 w-5" />
-                    Share Opinion
+                  <Link to="/results">
+                    <Lightbulb className="h-5 w-5" />
+                    View Results
                   </Link>
                 </Button>
               </div>
@@ -60,17 +60,17 @@ const Index = () => {
               <Card className="shadow-card hover:shadow-elevated transition-all duration-300 hover:-translate-y-1 border-t-4 border-t-primary">
                 <CardHeader className="space-y-3">
                   <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <BarChart3 className="h-6 w-6 text-primary" />
+                    <FileText className="h-6 w-6 text-primary" />
                   </div>
-                  <CardTitle className="text-xl">Performance Analysis</CardTitle>
+                  <CardTitle className="text-xl">Take Exam</CardTitle>
                   <CardDescription className="text-base leading-relaxed">
-                    Record student scores and compare average performance between oral and written assessments
+                    Complete computer knowledge assessment with written and audio questions
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild variant="link" className="p-0 h-auto gap-1 text-primary font-semibold">
-                    <Link to="/analyze">
-                      Explore data
+                    <Link to="/exam">
+                      Start exam
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -80,17 +80,17 @@ const Index = () => {
               <Card className="shadow-card hover:shadow-elevated transition-all duration-300 hover:-translate-y-1 border-t-4 border-t-accent">
                 <CardHeader className="space-y-3">
                   <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
-                    <MessageSquare className="h-6 w-6 text-accent" />
+                    <BarChart3 className="h-6 w-6 text-accent" />
                   </div>
-                  <CardTitle className="text-xl">Student Opinions</CardTitle>
+                  <CardTitle className="text-xl">View Results</CardTitle>
                   <CardDescription className="text-base leading-relaxed">
-                    Collect student preferences and understand the reasoning behind their assessment choices
+                    Review your exam scores, answers, and detailed performance analysis
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild variant="link" className="p-0 h-auto gap-1 text-accent font-semibold">
-                    <Link to="/opinions">
-                      Share feedback
+                    <Link to="/results">
+                      Check results
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -130,10 +130,10 @@ const Index = () => {
             </CardHeader>
             <CardContent className="text-center space-y-6">
               <p className="text-muted-foreground leading-relaxed text-lg max-w-2xl mx-auto">
-                Inspired by peer-reviewed educational research, Examertric provides a data-driven approach 
-                to understanding the effectiveness and student reception of different assessment modalities. 
-                Whether you're a student, teacher, or researcher, your contributions help build a clearer 
-                picture of assessment practices in education.
+                Examertric is a comprehensive platform for computer knowledge assessment. 
+                Take exams with both written and audio questions, receive instant feedback with scores,
+                and track your performance over time. Perfect for students preparing for technical interviews
+                and educators assessing student knowledge.
               </p>
               <Button asChild variant="outline" size="lg" className="hover:bg-primary hover:text-primary-foreground transition-colors">
                 <Link to="/about">Learn More About Examertric</Link>

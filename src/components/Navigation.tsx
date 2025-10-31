@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
-import { BarChart3, MessageSquare, Lightbulb, Info, Home, LogOut, User } from "lucide-react";
+import { BarChart3, Lightbulb, Info, Home, LogOut, User, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const Navigation = () => {
   const location = useLocation();
@@ -11,7 +12,8 @@ const Navigation = () => {
   const links = [
     { to: "/", label: "Home", icon: Home },
     { to: "/analyze", label: "Analyze Data", icon: BarChart3 },
-    { to: "/opinions", label: "Opinions", icon: MessageSquare },
+    { to: "/exam", label: "Take Exam", icon: FileText },
+    { to: "/results", label: "Results", icon: Lightbulb },
     { to: "/insights", label: "Insights", icon: Lightbulb },
     { to: "/about", label: "About", icon: Info },
   ];
@@ -49,6 +51,8 @@ const Navigation = () => {
               );
             })}
           </div>
+          
+          <ThemeToggle />
 
           {/* Auth Section */}
           {user ? (

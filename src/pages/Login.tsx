@@ -92,12 +92,6 @@ const Login = () => {
             </p>
           </div>
         </div>
-
-        <div className="mt-6 p-4 bg-accent/10 border border-accent/20 rounded-lg">
-          <p className="text-xs text-center text-muted-foreground">
-            <strong>Demo Mode:</strong> This is a demonstration. For production use, connect to a real backend.
-          </p>
-        </div>
       </div>
     </div>
   );

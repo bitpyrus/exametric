@@ -4,13 +4,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { Checkbox } from '@/components/ui/checkbox';
 import { GraduationCap, Mail, Lock, User } from 'lucide-react';
 
 const Signup = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { user, signup, isLoading } = useAuth();
+  const { toast } = useToast();
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -20,9 +24,19 @@ const Signup = () => {
     return <Navigate to="/" replace />;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    signup(email, password, name);
+    
+    if (!agreedToTerms) {
+      toast({
+        title: "Terms Required",
+        description: "You must agree to data collection and terms to create an account.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    await signup(email, password, name);
   };
 
   return (
@@ -91,9 +105,26 @@ const Signup = () => {
               <p className="text-xs text-muted-foreground">Must be at least 6 characters</p>
             </div>
 
+            <div className="flex items-start space-x-2">
+              <Checkbox 
+                id="terms" 
+                checked={agreedToTerms}
+                onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+              />
+              <label
+                htmlFor="terms"
+                className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                I agree to the collection and storage of my exam data, including written and audio responses, 
+                for assessment and analysis purposes. Data will be stored securely in Firebase and used only 
+                for educational evaluation.
+              </label>
+            </div>
+
             <Button
               type="submit"
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground transition-all"
+              disabled={!agreedToTerms}
             >
               Create Account
             </Button>
@@ -110,12 +141,6 @@ const Signup = () => {
               </Link>
             </p>
           </div>
-        </div>
-
-        <div className="mt-6 p-4 bg-accent/10 border border-accent/20 rounded-lg">
-          <p className="text-xs text-center text-muted-foreground">
-            <strong>Demo Mode:</strong> This is a demonstration. For production use, connect to a real backend.
-          </p>
         </div>
       </div>
     </div>

@@ -1,148 +1,166 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { useToast } from "@/hooks/use-toast";
-import { Upload } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
+import { useAuth } from "@/contexts/AuthContext";
+import { Award, TrendingUp, Users, Target, FileText, Mic } from "lucide-react";
 
-interface StudentScore {
+interface ExamResult {
   id: string;
-  studentName: string;
-  assessmentType: "Oral" | "Written";
-  score: number;
+  score?: number;
+  correctAnswers?: number;
+  answeredCount: number;
+  totalQuestions: number;
+  timeSpent: number;
+  answers: Record<string, { text?: string; audioUrl?: string }>;
 }
 
 const Analyze = () => {
-  const [scores, setScores] = useState<StudentScore[]>([]);
-  const [studentName, setStudentName] = useState("");
-  const [assessmentType, setAssessmentType] = useState<"Oral" | "Written">("Oral");
-  const [score, setScore] = useState("");
-  const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [results, setResults] = useState<ExamResult[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!studentName || !score) {
-      toast({
-        title: "Missing information",
-        description: "Please fill in all fields",
-        variant: "destructive",
-      });
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
       return;
     }
 
-    const newScore: StudentScore = {
-      id: Date.now().toString(),
-      studentName,
-      assessmentType,
-      score: Number(score),
-    };
-
-    const updatedScores = [...scores, newScore];
-    setScores(updatedScores);
-    localStorage.setItem("student_scores", JSON.stringify(updatedScores));
-
-    toast({
-      title: "Score added",
-      description: `Added score for ${studentName}`,
-    });
-
-    setStudentName("");
-    setScore("");
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.csv')) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a CSV file",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    const fetchResults = async () => {
       try {
-        const text = event.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim());
+        const querySnapshot = await getDocs(collection(db, 'examResults'));
+        const fetchedResults: ExamResult[] = [];
         
-        // Skip header row
-        const dataLines = lines.slice(1);
-        const newScores: StudentScore[] = [];
-
-        dataLines.forEach((line, index) => {
-          const [name, type, scoreValue] = line.split(',').map(s => s.trim());
-          
-          if (name && type && scoreValue) {
-            const assessmentType = type.toLowerCase() === 'oral' ? 'Oral' : 'Written';
-            const parsedScore = Number(scoreValue);
-            
-            if (!isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 100) {
-              newScores.push({
-                id: `${Date.now()}-${index}`,
-                studentName: name,
-                assessmentType,
-                score: parsedScore,
-              });
-            }
-          }
+        querySnapshot.forEach((doc) => {
+          fetchedResults.push({
+            id: doc.id,
+            ...doc.data(),
+          } as ExamResult);
         });
-
-        if (newScores.length > 0) {
-          const updatedScores = [...scores, ...newScores];
-          setScores(updatedScores);
-          localStorage.setItem("student_scores", JSON.stringify(updatedScores));
-          
-          toast({
-            title: "Upload successful",
-            description: `Added ${newScores.length} student scores`,
-          });
-        } else {
-          toast({
-            title: "No valid data",
-            description: "CSV file contains no valid records",
-            variant: "destructive",
-          });
-        }
+        
+        setResults(fetchedResults);
       } catch (error) {
-        toast({
-          title: "Upload failed",
-          description: "Error parsing CSV file",
-          variant: "destructive",
-        });
+        console.error('Error fetching results:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    reader.readAsText(file);
-    e.target.value = ''; // Reset input
+    fetchResults();
+  }, [user, navigate]);
+
+  const calculateStats = () => {
+    if (results.length === 0) return null;
+
+    const totalExams = results.length;
+    const avgScore = results.reduce((acc, r) => acc + (r.score || 0), 0) / totalExams;
+    const avgTime = results.reduce((acc, r) => acc + r.timeSpent, 0) / totalExams;
+    const avgCompletion = results.reduce((acc, r) => 
+      acc + ((r.answeredCount / r.totalQuestions) * 100), 0
+    ) / totalExams;
+
+    // Count answer types across all results
+    let textAnswers = 0;
+    let audioAnswers = 0;
+    
+    results.forEach(result => {
+      Object.values(result.answers).forEach(answer => {
+        if (answer.text) textAnswers++;
+        if (answer.audioUrl) audioAnswers++;
+      });
+    });
+
+    return {
+      totalExams,
+      avgScore: avgScore.toFixed(1),
+      avgTime: Math.round(avgTime),
+      avgCompletion: avgCompletion.toFixed(1),
+      textAnswers,
+      audioAnswers,
+    };
   };
 
-  const chartData = () => {
-    const oralScores = scores.filter(s => s.assessmentType === "Oral");
-    const writtenScores = scores.filter(s => s.assessmentType === "Written");
-    
-    const oralAvg = oralScores.length > 0 
-      ? oralScores.reduce((acc, s) => acc + s.score, 0) / oralScores.length 
-      : 0;
-    const writtenAvg = writtenScores.length > 0 
-      ? writtenScores.reduce((acc, s) => acc + s.score, 0) / writtenScores.length 
-      : 0;
+  const getScoreDistribution = () => {
+    const ranges = {
+      '0-20': 0,
+      '21-40': 0,
+      '41-60': 0,
+      '61-80': 0,
+      '81-100': 0,
+    };
+
+    results.forEach(result => {
+      const score = result.score || 0;
+      if (score <= 20) ranges['0-20']++;
+      else if (score <= 40) ranges['21-40']++;
+      else if (score <= 60) ranges['41-60']++;
+      else if (score <= 80) ranges['61-80']++;
+      else ranges['81-100']++;
+    });
+
+    return Object.entries(ranges).map(([range, count]) => ({
+      range,
+      count,
+    }));
+  };
+
+  const getAnswerTypeData = () => {
+    const stats = calculateStats();
+    if (!stats) return [];
 
     return [
-      { name: "Oral", average: Number(oralAvg.toFixed(2)) },
-      { name: "Written", average: Number(writtenAvg.toFixed(2)) },
+      { name: 'Written', value: stats.textAnswers, color: 'hsl(var(--primary))' },
+      { name: 'Audio', value: stats.audioAnswers, color: 'hsl(var(--accent))' },
     ];
   };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  const stats = calculateStats();
+  const scoreDistribution = getScoreDistribution();
+  const answerTypeData = getAnswerTypeData();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Navigation />
+        <main className="flex-1 container py-12 flex items-center justify-center">
+          <p className="text-muted-foreground">Loading analytics...</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!stats || results.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Navigation />
+        <main className="flex-1 container py-12">
+          <div className="max-w-4xl mx-auto">
+            <Card>
+              <CardHeader>
+                <CardTitle>No Data Available</CardTitle>
+                <CardDescription>
+                  Complete some exams to see analytics and insights.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -150,172 +168,157 @@ const Analyze = () => {
       
       <main className="flex-1 container py-12">
         <div className="mb-10">
-          <h1 className="text-4xl md:text-5xl font-bold mb-3">Analyze Performance Data</h1>
-          <p className="text-muted-foreground text-lg">Enter student assessment scores and view comparative analytics</p>
+          <h1 className="text-4xl md:text-5xl font-bold mb-3">Performance Analytics</h1>
+          <p className="text-muted-foreground text-lg">Comprehensive analysis of exam results and performance</p>
         </div>
 
-        <Card className="shadow-card hover:shadow-elevated transition-shadow mb-8">
+        {/* Stats Cards */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Exams</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.totalExams}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Completed assessments
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Average Score</CardTitle>
+              <Award className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.avgScore}%</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Across all exams
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Completion</CardTitle>
+              <Target className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.avgCompletion}%</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Questions answered
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Time</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{formatTime(stats.avgTime)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Per exam
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts */}
+        <div className="grid gap-8 lg:grid-cols-2 mb-8">
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="text-2xl">Score Distribution</CardTitle>
+              <CardDescription>Number of exams per score range</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={scoreDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="range" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: "hsl(var(--card))", 
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)"
+                    }} 
+                  />
+                  <Legend />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" name="Number of Exams" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="text-2xl">Answer Type Distribution</CardTitle>
+              <CardDescription>Written vs Audio responses</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={answerTypeData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {answerTypeData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: "hsl(var(--card))", 
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)"
+                    }} 
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Summary Card */}
+        <Card className="shadow-card">
           <CardHeader>
-            <CardTitle className="text-2xl flex items-center gap-2">
-              <Upload className="w-6 h-6" />
-              Upload Student Data
-            </CardTitle>
-            <CardDescription className="text-base">
-              Upload a CSV file with columns: Student Name, Assessment Type, Score
-            </CardDescription>
+            <CardTitle className="text-2xl">Answer Type Breakdown</CardTitle>
+            <CardDescription>Total answers by type across all exams</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="csv-upload"
-                />
-                <Label
-                  htmlFor="csv-upload"
-                  className="cursor-pointer flex flex-col items-center gap-3"
-                >
-                  <Upload className="w-10 h-10 text-primary" />
-                  <div>
-                    <p className="font-medium text-lg">Click to upload CSV file</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      CSV format: Student Name, Assessment Type (Oral/Written), Score (0-100)
-                    </p>
-                  </div>
-                </Label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center gap-4 p-4 border rounded-lg">
+                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <FileText className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.textAnswers}</p>
+                  <p className="text-sm text-muted-foreground">Written Answers</p>
+                </div>
               </div>
-              <div className="bg-accent/10 border border-accent/20 rounded-lg p-4">
-                <p className="text-sm font-medium mb-2">Example CSV format:</p>
-                <code className="text-xs bg-background/50 p-2 rounded block">
-                  Student Name,Assessment Type,Score<br />
-                  John Doe,Oral,85<br />
-                  Jane Smith,Written,92
-                </code>
+
+              <div className="flex items-center gap-4 p-4 border rounded-lg">
+                <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
+                  <Mic className="h-6 w-6 text-accent" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.audioAnswers}</p>
+                  <p className="text-sm text-muted-foreground">Audio Answers</p>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
-
-        <div className="grid gap-8 lg:grid-cols-2">
-          <Card className="shadow-card hover:shadow-elevated transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-2xl">Add Student Score</CardTitle>
-              <CardDescription className="text-base">Manually record a new assessment result</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="studentName">Student Name</Label>
-                  <Input
-                    id="studentName"
-                    value={studentName}
-                    onChange={(e) => setStudentName(e.target.value)}
-                    placeholder="Enter student name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="assessmentType">Assessment Type</Label>
-                  <Select value={assessmentType} onValueChange={(value: "Oral" | "Written") => setAssessmentType(value)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Oral">Oral</SelectItem>
-                      <SelectItem value="Written">Written</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="score">Score (0-100)</Label>
-                  <Input
-                    id="score"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={score}
-                    onChange={(e) => setScore(e.target.value)}
-                    placeholder="Enter score"
-                  />
-                </div>
-
-                <Button type="submit" className="w-full">Add Score</Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-card hover:shadow-elevated transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-2xl">Average Scores Comparison</CardTitle>
-              <CardDescription className="text-base">Visual comparison of assessment performance</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {scores.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={chartData()}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                    <YAxis stroke="hsl(var(--muted-foreground))" domain={[0, 100]} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "hsl(var(--card))", 
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "var(--radius)"
-                      }} 
-                    />
-                    <Legend />
-                    <Bar dataKey="average" fill="hsl(var(--primary))" name="Average Score" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Add some scores to see the comparison chart
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {scores.length > 0 && (
-          <Card className="mt-8 shadow-card hover:shadow-elevated transition-shadow">
-            <CardHeader>
-              <CardTitle className="text-2xl">All Recorded Scores</CardTitle>
-              <CardDescription className="text-base">{scores.length} assessment results</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead>Assessment Type</TableHead>
-                    <TableHead className="text-right">Score</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {scores.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">{s.studentName}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          s.assessmentType === "Oral" 
-                            ? "bg-primary/10 text-primary" 
-                            : "bg-secondary/10 text-secondary"
-                        }`}>
-                          {s.assessmentType}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">{s.score}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
       </main>
 
       <Footer />
