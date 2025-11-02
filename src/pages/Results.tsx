@@ -4,8 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { database } from '@/lib/firebase';
+import { ref, get, orderByChild, query } from 'firebase/database';
 import Navigation from '@/components/Navigation';
 import { Clock, CheckCircle2, FileText, Mic, Award, XCircle, Target } from 'lucide-react';
 
@@ -36,28 +36,39 @@ export default function Results() {
 
     const fetchResults = async () => {
       try {
-        const q = query(
-          collection(db, 'examResults'),
-          where('userId', '==', user.id),
-          orderBy('timestamp', 'desc')
-        );
+        console.log('Fetching results for user:', user.id);
         
-        const querySnapshot = await getDocs(q);
+        const resultsRef = ref(database, `examResults/${user.id}`);
+        const snapshot = await get(resultsRef);
+        
         const fetchedResults: ExamResult[] = [];
         
-        querySnapshot.forEach((doc) => {
-          fetchedResults.push({
-            id: doc.id,
-            ...doc.data(),
-          } as ExamResult);
-        });
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          Object.entries(data).forEach(([key, value]: [string, any]) => {
+            console.log('Found result:', key, value);
+            fetchedResults.push({
+              id: key,
+              ...value,
+            } as ExamResult);
+          });
+          
+          // Sort by timestamp descending
+          fetchedResults.sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+        }
+        
+        console.log(`Fetched ${fetchedResults.length} results`);
         
         setResults(fetchedResults);
         if (fetchedResults.length > 0) {
           setSelectedResult(fetchedResults[0]);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching results:', error);
+        console.error('Error code:', error?.code);
+        console.error('Error message:', error?.message);
       } finally {
         setIsLoading(false);
       }

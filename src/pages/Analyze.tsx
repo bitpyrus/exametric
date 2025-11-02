@@ -4,8 +4,8 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { db } from "@/lib/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { database } from "@/lib/firebase";
+import { ref, get } from "firebase/database";
 import { useAuth } from "@/contexts/AuthContext";
 import { Award, TrendingUp, Users, Target, FileText, Mic } from "lucide-react";
 
@@ -33,19 +33,31 @@ const Analyze = () => {
 
     const fetchResults = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'examResults'));
+        console.log('Fetching analytics for user:', user.id);
+        
+        const resultsRef = ref(database, `examResults/${user.id}`);
+        const snapshot = await get(resultsRef);
+        
         const fetchedResults: ExamResult[] = [];
         
-        querySnapshot.forEach((doc) => {
-          fetchedResults.push({
-            id: doc.id,
-            ...doc.data(),
-          } as ExamResult);
-        });
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          Object.entries(data).forEach(([key, value]: [string, any]) => {
+            console.log('Found result:', key, value);
+            fetchedResults.push({
+              id: key,
+              ...value,
+            } as ExamResult);
+          });
+        }
+        
+        console.log(`Fetched ${fetchedResults.length} results for analytics`);
         
         setResults(fetchedResults);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching results:', error);
+        console.error('Error code:', error?.code);
+        console.error('Error message:', error?.message);
       } finally {
         setIsLoading(false);
       }

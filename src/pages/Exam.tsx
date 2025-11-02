@@ -10,9 +10,8 @@ import { Progress } from '@/components/ui/progress';
 import { Volume2, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useToast } from '@/hooks/use-toast';
-import { db, storage } from '@/lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { database } from '@/lib/firebase';
+import { ref, push, set } from 'firebase/database';
 import Navigation from '@/components/Navigation';
 
 type SectionId = 'section1_standard' | 'section1_control' | 'section2_standard' | 'section2_control';
@@ -89,27 +88,78 @@ export default function Exam() {
 
   const handleAudioRecorded = async (blob: Blob) => {
     try {
-      // Upload audio to Firebase Storage
-      const audioRef = ref(storage, `exam-audio/${user?.id}/${questionKey}_${Date.now()}.webm`);
-      await uploadBytes(audioRef, blob);
-      const audioUrl = await getDownloadURL(audioRef);
+      console.log('Processing audio recording...');
+      
+      // Convert audio blob to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      
+      await new Promise((resolve, reject) => {
+        reader.onloadend = async () => {
+          try {
+            const base64Audio = (reader.result as string).split(',')[1];
 
-      setAnswers((prev) => ({
-        ...prev,
-        [questionKey]: { audioUrl },
-      }));
+            // TODO  This is not real API key
+            const GOOGLE_API_KEY = 'AIzaSyD9Eq7tAmxx6o1iFBYb-s-3fLKqIl-8DDU';
+            
+            const response = await fetch(
+              `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_API_KEY}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  config: {
+                    encoding: 'WEBM_OPUS',
+                    sampleRateHertz: 48000,
+                    languageCode: 'en-US',
+                  },
+                  audio: {
+                    content: base64Audio,
+                  },
+                }),
+              }
+            );
 
-      toast({
-        title: 'Audio saved',
-        description: 'Moving to next question.',
+            if (!response.ok) {
+              const error = await response.json();
+              console.error('Google Speech-to-Text error:', error);
+              throw new Error('Failed to transcribe audio');
+            }
+
+            const result = await response.json();
+            const text = result.results?.[0]?.alternatives?.[0]?.transcript || '';
+            
+            if (!text) {
+              throw new Error('No transcription received');
+            }
+
+            console.log('Transcribed text:', text);
+
+            setAnswers((prev) => ({
+              ...prev,
+              [questionKey]: { text },
+            }));
+
+            toast({
+              title: 'Answer saved',
+              description: 'Moving to next question.',
+            });
+
+            handleNext();
+            resolve(null);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = reject;
       });
-
-      handleNext();
     } catch (error) {
-      console.error('Error uploading audio:', error);
+      console.error('Error transcribing audio:', error);
       toast({
-        title: 'Upload failed',
-        description: 'Failed to save audio. Please try again.',
+        title: 'Transcription failed',
+        description: 'Failed to process audio. Please try again.',
         variant: 'destructive',
       });
     }
@@ -150,8 +200,22 @@ export default function Exam() {
     const analysis: Record<string, { correct: boolean; userAnswer: string; expectedAnswers: string[] }> = {};
 
     Object.keys(answers).forEach((questionKey) => {
-      const [sectionId, questionId] = questionKey.split('_') as [SectionId, string];
-      const question = examData.exam.sets[sectionId].questions[questionId];
+      const parts = questionKey.split('_');
+      const questionId = parts.pop() as string;
+      const sectionId = parts.join('_') as SectionId;
+      
+      const section = examData.exam.sets[sectionId];
+      if (!section) {
+        console.error(`Section not found: ${sectionId}`);
+        return;
+      }
+      
+      const question = section.questions[questionId];
+      if (!question) {
+        console.error(`Question not found: ${questionId} in section ${sectionId}`);
+        return;
+      }
+      
       const userAnswer = answers[questionKey];
 
       if (userAnswer.text) {
@@ -165,13 +229,6 @@ export default function Exam() {
         analysis[questionKey] = {
           correct: isCorrect,
           userAnswer: userAnswer.text,
-          expectedAnswers: question.answers,
-        };
-      } else if (userAnswer.audioUrl) {
-        // Audio answers need manual grading
-        analysis[questionKey] = {
-          correct: false,
-          userAnswer: 'Audio response',
           expectedAnswers: question.answers,
         };
       }
@@ -193,9 +250,9 @@ export default function Exam() {
     try {
       const timeSpent = Math.floor((Date.now() - startTime) / 1000);
       const { correctAnswers, analysis } = calculateScore();
-      const score = Math.round((correctAnswers / answeredCount) * 100);
+      const score = answeredCount > 0 ? Math.round((correctAnswers / answeredCount) * 100) : 0;
 
-      await addDoc(collection(db, 'examResults'), {
+      const examData = {
         userId: user?.id,
         email: user?.email,
         answers,
@@ -206,7 +263,15 @@ export default function Exam() {
         timeSpent,
         totalQuestions,
         answeredCount,
-      });
+      };
+
+      console.log('Submitting exam data to Realtime Database:', examData);
+      
+      const resultsRef = ref(database, `examResults/${user?.id}`);
+      const newResultRef = push(resultsRef);
+      await set(newResultRef, examData);
+      
+      console.log('Exam submitted successfully with ID:', newResultRef.key);
 
       toast({
         title: 'Exam submitted!',
@@ -214,11 +279,22 @@ export default function Exam() {
       });
 
       navigate('/results');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting exam:', error);
+      console.error('Error code:', error?.code);
+      console.error('Error message:', error?.message);
+      
+      let errorMessage = 'Failed to submit exam. Please try again.';
+      
+      if (error?.code === 'permission-denied') {
+        errorMessage = 'Permission denied. Please check Firebase Security Rules.';
+      } else if (error?.code === 'unavailable') {
+        errorMessage = 'Network error. Please check your internet connection.';
+      }
+      
       toast({
         title: 'Submission failed',
-        description: 'Failed to submit exam. Please try again.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

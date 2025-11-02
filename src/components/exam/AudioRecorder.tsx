@@ -17,9 +17,11 @@ export const AudioRecorder = ({ onAudioRecorded }: AudioRecorderProps) => {
     resetRecording();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (audioBlob) {
-      onAudioRecorded(audioBlob);
+      await onAudioRecorded(audioBlob);
+      // Reset after successful save
+      resetRecording();
     }
   };
 
