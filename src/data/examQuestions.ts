@@ -89,8 +89,8 @@ export const examData = {
           Q7: { id: "Q7", type: "blank" as const, question: "Which protocol secures web communication?", answers: ["HTTPS"] },
           Q8: { id: "Q8", type: "blank" as const, question: "Which port number is used by HTTPS?", answers: ["443"] },
           Q9: { id: "Q9", type: "blank" as const, question: "Which data structure uses nodes connected by edges?", answers: ["Graph"] },
-          Q10: { id: "Q10", type: "audio" as const, question: "Which command in SQL removes all table data but keeps the structure?", answers: ["TRUNCATE"] },
-          Q11: { id: "Q11", type: "audio" as const, question: "Which CPU part temporarily stores instructions and data?", answers: ["Cache"] },
+          Q10: { id: "Q10", type: "blank" as const, question: "Which command in SQL removes all table data but keeps the structure?", answers: ["TRUNCATE"] },
+          Q11: { id: "Q11", type: "blank" as const, question: "Which CPU part temporarily stores instructions and data?", answers: ["Cache"] },
           Q12: { id: "Q12", type: "blank" as const, question: "What is the Big O time complexity of binary search?", answers: ["O(log n)", "O(logn)"] }
         }
       },
@@ -106,9 +106,9 @@ export const examData = {
           Q7: { id: "Q7", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which OOP concept hides implementation details from users?", answers: ["Encapsulation"] },
           Q8: { id: "Q8", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which Linux command changes the current directory?", answers: ["cd"] },
           Q9: { id: "Q9", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which data structure operates on a First In First Out basis?", answers: ["Queue"] },
-          Q10: { id: "Q10", type: "blank" as const, question: "Record yourself answering the next audio question:", tts_text: "Which scheduling algorithm executes the shortest job next?", answers: ["Shortest Job First", "SJF"] },
-          Q11 : { id: "Q11", type: "blank" as const, question: "Record yourself answering the next audio question:", tts_text: "Which sorting algorithm builds the final sorted array one item at a time?", answers: ["Insertion Sort"] },
-          Q12: { id: "Q12", type: "blank" as const, question: "Record yourself answering the next audio question:", tts_text: "Which algorithm finds the shortest path in a weighted graph?", answers: ["Dijkstra's algorithm", "Dijkstra algorithm"] }
+          Q10: { id: "Q10", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which scheduling algorithm executes the shortest job next?", answers: ["Shortest Job First", "SJF"] },
+          Q11 : { id: "Q11", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which sorting algorithm builds the final sorted array one item at a time?", answers: ["Insertion Sort"] },
+          Q12: { id: "Q12", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which algorithm finds the shortest path in a weighted graph?", answers: ["Dijkstra's algorithm", "Dijkstra algorithm"] }
         }
       },
       section3_control: {
@@ -122,10 +122,10 @@ export const examData = {
           Q6: { id: "Q6", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which OOP concept allows subclasses to reuse parent methods?", answers: ["Inheritance"] },
           Q7: { id: "Q7", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which OOP concept allows one interface to be used for different data types?", answers: ["Polymorphism"] },
           Q8: { id: "Q8", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which command in Linux lists files and directories?", answers: ["ls"] },
-          Q9: { id: "Q9", type: "blank" as const, question: "Record yourself answering the next audio question:", tts_text: "Which data structure operates on a Last In First Out basis?", answers: ["Stack"] },
+          Q9: { id: "Q9", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which data structure operates on a Last In First Out basis?", answers: ["Stack"] },
           Q10: { id: "Q10", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which scheduling algorithm gives equal CPU time to all processes?", answers: ["Round Robin"] },
-          Q11: { id: "Q11", type: "blank" as const, question: "Record yourself answering the next audio question:", tts_text: "Which algorithm uses divide and conquer for sorting?", answers: ["Merge Sort"] },
-          Q12: { id: "Q12", type: "blank" as const, question: "Record yourself answering the next audio question:", tts_text: "Which algorithm uses a greedy approach to find the minimum spanning tree?", answers: ["Prim's algorithm", "Prim algorithm"] }
+          Q11: { id: "Q11", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which algorithm uses divide and conquer for sorting?", answers: ["Merge Sort"] },
+          Q12: { id: "Q12", type: "audio" as const, question: "Record yourself answering the next audio question:", tts_text: "Which algorithm uses a greedy approach to find the minimum spanning tree?", answers: ["Prim's algorithm", "Prim algorithm"] }
         }
       }
     }
