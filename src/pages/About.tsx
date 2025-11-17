@@ -15,7 +15,7 @@ const About = () => {
             <div className="inline-block w-16 h-16 md:w-20 md:h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4 md:mb-6">
               <GraduationCap className="h-8 w-8 md:h-10 md:w-10 text-primary" />
             </div>
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-3 md:mb-4 px-4">About Examertric</h1>
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-3 md:mb-4 px-4">About Exametric</h1>
             <p className="text-muted-foreground text-lg md:text-xl px-4">Understanding Assessment Methods Through Data</p>
           </div>
 

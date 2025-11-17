@@ -104,6 +104,7 @@ const Signup = () => {
               />
               <p className="text-xs text-muted-foreground">Must be at least 6 characters</p>
             </div>
+            <div><a href="https://drive.google.com/file/d/1fQbyNVnYJDJB3m5Fovc1e4AjIb1IqrcG/view?usp=sharing" className={"text-primary hover:text-primary/80 font-medium transition-colors"} >Terms and Conditions</a></div>
 
             <div className="flex items-start space-x-2">
               <Checkbox 
@@ -115,9 +116,7 @@ const Signup = () => {
                 htmlFor="terms"
                 className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                I agree to the collection and storage of my exam data, including written and audio responses, 
-                for assessment and analysis purposes. Data will be stored securely in Firebase and used only 
-                for educational evaluation.
+                I confirm that I am over 18, I have read and understood the Terms and Conditions, and I consent to the processing of my data in accordance with GDPR for research purposes.
               </label>
             </div>
 
