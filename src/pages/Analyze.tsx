@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,10 @@ const Analyze = () => {
   const navigate = useNavigate();
   const [results, setResults] = useState<ExamResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [userScores, setUserScores] = useState<Array<{ uid: string; email?: string | null; totalCorrect: number; totalQuestions: number; percent: number }>>([]);
+
+  const ADMIN_EMAIL = 'admin@exametric.com';
+  const isAdminUser = Boolean(user && (user.role === 'admin' || user.email === ADMIN_EMAIL));
 
   useEffect(() => {
     if (!user) {
@@ -31,40 +35,143 @@ const Analyze = () => {
       return;
     }
 
+    // helpers
+    const toNumberOrZero = (v: unknown) => {
+      if (v === undefined || v === null) return 0;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+      return 0;
+    };
+
     const fetchResults = async () => {
       try {
-        console.log('Fetching analytics for user:', user.id);
-        
-        const resultsRef = ref(database, `examResults/${user.id}`);
-        const snapshot = await get(resultsRef);
-        
+        console.log('Fetching analytics, user:', user.id, 'isAdmin:', isAdminUser);
+
         const fetchedResults: ExamResult[] = [];
-        
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          Object.entries(data).forEach(([key, value]: [string, any]) => {
-            console.log('Found result:', key, value);
-            fetchedResults.push({
-              id: key,
-              ...value,
-            } as ExamResult);
-          });
+
+        if (isAdminUser) {
+          // Admin: aggregate across all users under examResults and compute per-user totals
+          const rootRef = ref(database, `examResults`);
+          const snap = await get(rootRef);
+          const perUserTotals: Record<string, { totalCorrect: number; totalQuestions: number; email?: string | null }> = {};
+
+          if (snap.exists()) {
+            const rootData = snap.val() as Record<string, Record<string, unknown>> | null;
+            if (rootData) {
+              // iterate users
+              for (const userId of Object.keys(rootData)) {
+                const userResults = rootData[userId] as Record<string, unknown> | undefined;
+                if (!userResults || typeof userResults !== 'object') continue;
+
+                let totalCorrect = 0;
+                let totalQuestions = 0;
+
+                for (const [resultId, value] of Object.entries(userResults)) {
+                  if (!value || typeof value !== 'object') continue;
+                  const valObj = value as Record<string, unknown>;
+
+                  const correctFromField = toNumberOrZero(valObj.correctAnswers);
+                  const tq = toNumberOrZero(valObj.totalQuestions);
+
+                  // If correctAnswers field present, use it. Otherwise, try to count analysis entries with correct===true
+                  let correctCount = correctFromField;
+                  if (!correctFromField && valObj.analysis && typeof valObj.analysis === 'object') {
+                    const analysis = valObj.analysis as Record<string, unknown>;
+                    // count entries where analysis.correct === true OR analysis.mark > 0
+                    let cc = 0;
+                    Object.values(analysis).forEach((v) => {
+                      if (!v || typeof v !== 'object') return;
+                      const a = v as Record<string, unknown>;
+                      if (a.correct === true) cc += 1;
+                      else if (typeof a.mark === 'number' && a.mark > 0) cc += 1;
+                    });
+                    correctCount = cc;
+                  }
+
+                  totalCorrect += correctCount;
+                  totalQuestions += tq;
+
+                  // also push into flat results array for possible later use
+                  const entry: ExamResult = {
+                    id: String(resultId),
+                    score: toNumberOrZero(valObj.score) || undefined,
+                    correctAnswers: correctCount || undefined,
+                    answeredCount: toNumberOrZero(valObj.answeredCount),
+                    totalQuestions: tq,
+                    timeSpent: toNumberOrZero(valObj.timeSpent),
+                    answers: (valObj.answers && typeof valObj.answers === 'object') ? (valObj.answers as Record<string, { text?: string; audioUrl?: string }>) : {},
+                  };
+                  fetchedResults.push(entry);
+                }
+
+                // attempt to read user profile for email
+                let email: string | null = null;
+                try {
+                  const userSnap = await get(ref(database, `users/${userId}`));
+                  if (userSnap.exists()) {
+                    const u = userSnap.val() as Record<string, unknown>;
+                    email = typeof u.email === 'string' ? u.email : null;
+                  }
+                } catch (e) {
+                  // ignore
+                }
+
+                perUserTotals[userId] = { totalCorrect, totalQuestions, email };
+              }
+            }
+          }
+
+          // Build userScores state from perUserTotals
+          const scores = Object.entries(perUserTotals).map(([uid, totals]) => ({
+            uid,
+            email: totals.email ?? null,
+            totalCorrect: totals.totalCorrect,
+            totalQuestions: totals.totalQuestions || 0,
+            percent: totals.totalQuestions ? Math.round((totals.totalCorrect / totals.totalQuestions) * 100) : 0,
+          }));
+
+          setUserScores(scores);
+        } else {
+          // Regular user: only their results
+          const resultsRef = ref(database, `examResults/${user.id}`);
+          const snapshot = await get(resultsRef);
+          if (snapshot.exists()) {
+            const data = snapshot.val() as Record<string, unknown> | null;
+            if (data) {
+              Object.entries(data).forEach(([key, value]) => {
+                if (value && typeof value === 'object') {
+                  const valObj = value as Record<string, unknown>;
+                  const entry: ExamResult = {
+                    id: key,
+                    score: toNumberOrZero(valObj.score) || undefined,
+                    correctAnswers: toNumberOrZero(valObj.correctAnswers) || undefined,
+                    answeredCount: toNumberOrZero(valObj.answeredCount),
+                    totalQuestions: toNumberOrZero(valObj.totalQuestions),
+                    timeSpent: toNumberOrZero(valObj.timeSpent),
+                    answers: (valObj.answers && typeof valObj.answers === 'object') ? (valObj.answers as Record<string, { text?: string; audioUrl?: string }>) : {},
+                  };
+                  fetchedResults.push(entry);
+                }
+              });
+            }
+          }
         }
-        
+
         console.log(`Fetched ${fetchedResults.length} results for analytics`);
-        
         setResults(fetchedResults);
-      } catch (error: any) {
-        console.error('Error fetching results:', error);
-        console.error('Error code:', error?.code);
-        console.error('Error message:', error?.message);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Error fetching results:', message);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchResults();
-  }, [user, navigate]);
+  }, [user, navigate, isAdminUser]);
 
   const calculateStats = () => {
     if (results.length === 0) return null;
@@ -166,6 +273,55 @@ const Analyze = () => {
                   Complete some exams to see analytics and insights.
                 </CardDescription>
               </CardHeader>
+            </Card>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Render admin user scores table when admin
+  if (!isLoading && isAdminUser) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Navigation />
+        <main className="flex-1 container py-12">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold">User Scores</h1>
+            <p className="text-muted-foreground">Score per user across all questions (total correct / total questions)</p>
+          </div>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>User Scores</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="py-2">User</th>
+                      <th className="py-2">Total Correct</th>
+                      <th className="py-2">Total Questions</th>
+                      <th className="py-2">Percent</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userScores.map((u) => (
+                      <tr key={u.uid} className="border-b hover:bg-muted">
+                        <td className="py-2">
+                          <Link to={`/admin/review?uid=${encodeURIComponent(u.uid)}`} className="underline">
+                            {u.email ?? u.uid}
+                          </Link>
+                        </td>
+                        <td className="py-2">{u.totalCorrect}</td>
+                        <td className="py-2">{u.totalQuestions}</td>
+                        <td className="py-2">{u.percent}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
             </Card>
           </div>
         </main>

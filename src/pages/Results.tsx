@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { database } from '@/lib/firebase';
-import { ref, get, orderByChild, query } from 'firebase/database';
+import { ref, get } from 'firebase/database';
 import Navigation from '@/components/Navigation';
 import { Clock, CheckCircle2, FileText, Mic, Award, XCircle, Target } from 'lucide-react';
 
@@ -28,6 +28,17 @@ export default function Results() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedResult, setSelectedResult] = useState<ExamResult | null>(null);
 
+  // Helper: safely parse a value to number or undefined
+  const toNumberOrUndefined = (v: unknown): number | undefined => {
+    if (v === undefined || v === null) return undefined;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  };
+
   useEffect(() => {
     if (!user) {
       navigate('/login');
@@ -37,38 +48,48 @@ export default function Results() {
     const fetchResults = async () => {
       try {
         console.log('Fetching results for user:', user.id);
-        
+
         const resultsRef = ref(database, `examResults/${user.id}`);
         const snapshot = await get(resultsRef);
-        
+
         const fetchedResults: ExamResult[] = [];
-        
+
         if (snapshot.exists()) {
-          const data = snapshot.val();
-          Object.entries(data).forEach(([key, value]: [string, any]) => {
-            console.log('Found result:', key, value);
-            fetchedResults.push({
-              id: key,
-              ...value,
-            } as ExamResult);
+          const data = snapshot.val() as Record<string, unknown>;
+
+          Object.entries(data).forEach(([key, value]) => {
+            if (value && typeof value === 'object') {
+              const valObj = value as Record<string, unknown>;
+
+              const entry: ExamResult = {
+                id: key,
+                timestamp: String(valObj.timestamp ?? ''),
+                timeSpent: toNumberOrUndefined(valObj.timeSpent) ?? 0,
+                totalQuestions: toNumberOrUndefined(valObj.totalQuestions) ?? 0,
+                answeredCount: toNumberOrUndefined(valObj.answeredCount) ?? 0,
+                score: toNumberOrUndefined(valObj.score),
+                correctAnswers: toNumberOrUndefined(valObj.correctAnswers),
+                analysis: (valObj.analysis && typeof valObj.analysis === 'object') ? (valObj.analysis as Record<string, { correct: boolean; userAnswer: string; expectedAnswers: string[] }>) : undefined,
+                answers: (valObj.answers && typeof valObj.answers === 'object') ? (valObj.answers as Record<string, { text?: string; audioUrl?: string }>) : {},
+              };
+
+              fetchedResults.push(entry);
+            }
           });
-          
+
           // Sort by timestamp descending
-          fetchedResults.sort((a, b) => 
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
+          fetchedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         }
-        
+
         console.log(`Fetched ${fetchedResults.length} results`);
-        
+
         setResults(fetchedResults);
         if (fetchedResults.length > 0) {
           setSelectedResult(fetchedResults[0]);
         }
-      } catch (error: any) {
-        console.error('Error fetching results:', error);
-        console.error('Error code:', error?.code);
-        console.error('Error message:', error?.message);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Error fetching results:', message);
       } finally {
         setIsLoading(false);
       }
@@ -124,10 +145,10 @@ export default function Results() {
   }
 
   const textAnswers = selectedResult
-    ? Object.entries(selectedResult.answers).filter(([_, ans]) => ans.text)
+    ? Object.entries(selectedResult.answers ?? {}).filter(([_, ans]) => ans.text)
     : [];
   const audioAnswers = selectedResult
-    ? Object.entries(selectedResult.answers).filter(([_, ans]) => ans.audioUrl)
+    ? Object.entries(selectedResult.answers ?? {}).filter(([_, ans]) => ans.audioUrl)
     : [];
 
   return (
@@ -230,16 +251,16 @@ export default function Results() {
                 </Card>
 
                 {/* Detailed Analysis */}
-                {selectedResult.analysis && Object.keys(selectedResult.analysis).length > 0 && (
+                {selectedResult.analysis && Object.keys(selectedResult.analysis ?? {}).length > 0 && (
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <FileText className="h-5 w-5" />
-                        Answer Analysis ({Object.keys(selectedResult.analysis).length})
+                        Answer Analysis ({Object.keys(selectedResult.analysis ?? {}).length})
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {Object.entries(selectedResult.analysis).map(([key, result]) => (
+                      {Object.entries(selectedResult.analysis ?? {}).map(([key, result]) => (
                         <div key={key} className="border rounded-lg p-4 space-y-2">
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-semibold text-muted-foreground">

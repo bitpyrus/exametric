@@ -7,14 +7,15 @@ import {
   signOut, 
   onAuthStateChanged,
   updateProfile,
-  User as FirebaseUser
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, database } from '@/lib/firebase';
+import { ref, set, get } from 'firebase/database';
 
 interface User {
   id: string;
   email: string;
   name: string;
+  role?: 'admin' | 'examTaker';
 }
 
 interface AuthContextType {
@@ -35,12 +36,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // Listen to Firebase auth state changes
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Determine role from token claims, fallback to RTDB users/{uid}.role
+        let role: 'admin' | 'examTaker' = 'examTaker';
+        try {
+          const idTokenResult = await firebaseUser.getIdTokenResult();
+          if (idTokenResult?.claims?.admin) role = 'admin';
+        } catch (e) {
+          // ignore
+        }
+
+        try {
+          const snap = await get(ref(database, `users/${firebaseUser.uid}`));
+          if (snap.exists()) {
+            const val = snap.val();
+            if (val?.role === 'admin') role = 'admin';
+            else if (val?.role === 'examTaker') role = 'examTaker';
+          }
+        } catch (e) {
+          // ignore
+        }
+
         setUser({
           id: firebaseUser.uid,
           email: firebaseUser.email || '',
           name: firebaseUser.displayName || firebaseUser.email || 'User',
+          role,
         });
       } else {
         setUser(null);
@@ -59,10 +81,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: `Logged in as ${userCredential.user.displayName || userCredential.user.email}`,
       });
       navigate('/');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       toast({
         title: "Login failed",
-        description: error.message || "Invalid email or password",
+        description: message || "Invalid email or password",
         variant: "destructive",
       });
     }
@@ -76,16 +99,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await updateProfile(userCredential.user, {
         displayName: name,
       });
-      
+
+      // Persist user role as examTaker in Realtime DB (client-side write)
+      try {
+        await set(ref(database, `users/${userCredential.user.uid}`), {
+          role: 'examTaker',
+          email,
+          name,
+        });
+      } catch (e: unknown) {
+        console.warn('Failed to write user role to database', e);
+      }
+
       toast({
         title: "Account created!",
         description: `Welcome, ${name}!`,
       });
       navigate('/');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       toast({
         title: "Signup failed",
-        description: error.message || "Could not create account",
+        description: message || "Could not create account",
         variant: "destructive",
       });
     }
@@ -99,10 +134,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: "You have been logged out successfully",
       });
       navigate('/login');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       toast({
         title: "Error",
-        description: error.message || "Could not log out",
+        description: message || "Could not log out",
         variant: "destructive",
       });
     }

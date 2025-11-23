@@ -15,11 +15,25 @@ const Navigation = () => {
   const links = [
     { to: "/", label: "Home", icon: Home },
     { to: "/analyze", label: "Analyze Data", icon: BarChart3 },
-    { to: "/exam", label: "Take Exam", icon: FileText },
+    { to: "/exam", label: "Take Exam", icon: FileText, adminOnly: false },
     { to: "/results", label: "Results", icon: Lightbulb },
     { to: "/insights", label: "Insights", icon: Lightbulb },
     { to: "/about", label: "About", icon: Info },
   ];
+
+  const ADMIN_EMAIL = 'admin@exametric.com';
+
+  // Build visible links based on user role or admin email
+  const isAdminUser = Boolean(user && (user.role === 'admin' || user.email === ADMIN_EMAIL));
+
+  const visibleLinks = links.filter((l) => {
+    // If link is the exam route and user is admin (by role or email), hide it
+    if (l.to === '/exam' && isAdminUser) return false;
+    return true;
+  });
+
+  // Admin extra links (show when user is admin or matches admin email)
+  const adminLinks = isAdminUser ? [{ to: '/admin/review', label: 'Admin Review', icon: FileText }] : [];
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm">
@@ -34,7 +48,7 @@ const Navigation = () => {
         {/* Desktop Navigation */}
         <div className="hidden lg:flex items-center gap-4">
           <div className="flex gap-2">
-            {links.map((link) => {
+            {[...visibleLinks, ...adminLinks].map((link) => {
               const Icon = link.icon;
               const isActive = location.pathname === link.to;
               
@@ -102,7 +116,7 @@ const Navigation = () => {
             </SheetTrigger>
             <SheetContent side="right" className="w-[300px] sm:w-[400px]">
               <div className="flex flex-col gap-4 mt-8">
-                {links.map((link) => {
+                {[...visibleLinks, ...adminLinks].map((link) => {
                   const Icon = link.icon;
                   const isActive = location.pathname === link.to;
                   
