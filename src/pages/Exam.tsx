@@ -16,7 +16,48 @@ import { database } from '@/lib/firebase';
 import { ref, push, set } from 'firebase/database';
 import Navigation from '@/components/Navigation';
 
+// Helper to get a random subset of keys
+function getRandomIds<T extends Record<string, any>>(obj: T, count: number): string[] {
+  const keys = Object.keys(obj);
+  // Fisher–Yates shuffle
+  for (let i = keys.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+  }
+  return keys.slice(0, count);
+}
+
+// Pick 5 written IDs based on section2_standard (Q1..Q12)
+const WRITTEN_QUESTION_IDS = getRandomIds(
+  examData.exam.sets.section2_standard.questions,
+  5
+);
+
+// Pick 5 audio IDs based on section3_standard (Q1..Q12)
+const AUDIO_QUESTION_IDS = getRandomIds(
+  examData.exam.sets.section3_standard.questions,
+  5
+);
+
 type SectionId = 'section1_accomodation' | 'section2_standard' | 'section2_control' | 'section3_standard' | 'section3_control';
+
+function getSectionQuestions(sectionId: SectionId): Question[] {
+  const section = examData.exam.sets[sectionId];
+  let questions = Object.values(section.questions);
+
+  // Filter written sections by WRITTEN_QUESTION_IDS
+  if (sectionId === 'section2_standard' || sectionId === 'section2_control') {
+    questions = questions.filter((q) => WRITTEN_QUESTION_IDS.includes(q.id));
+  }
+
+  // Filter audio sections by AUDIO_QUESTION_IDS
+  if (sectionId === 'section3_standard' || sectionId === 'section3_control') {
+    questions = questions.filter((q) => AUDIO_QUESTION_IDS.includes(q.id));
+  }
+
+  // section1_accomodation is unchanged
+  return questions;
+}
 
 export default function Exam() {
   const { user } = useAuth();
@@ -33,12 +74,12 @@ export default function Exam() {
 
   const sections = Object.keys(examData.exam.sets) as SectionId[];
   const currentSectionData = examData.exam.sets[currentSection];
-  const questions = Object.values(currentSectionData.questions);
+  const questions = getSectionQuestions(currentSection);
   const currentQuestion = questions[currentQuestionIndex];
   const questionKey = `${currentSection}_${currentQuestion.id}`;
 
   const totalQuestions = sections.reduce(
-    (sum, sectionId) => sum + Object.keys(examData.exam.sets[sectionId].questions).length,
+    (sum, sectionId) => sum + getSectionQuestions(sectionId).length,
     0
   );
 
