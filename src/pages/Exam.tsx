@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { examData } from '@/data/examQuestions';
+import { examData, Question } from '@/data/examQuestions';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { AudioRecorder } from '@/components/exam/AudioRecorder';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Volume2, ChevronRight, ChevronLeft } from 'lucide-react';
@@ -16,7 +18,49 @@ import Navigation from '@/components/Navigation';
 import { uploadAudioForTranscription } from '@/lib/speechApi';
 import { uploadAudioBlob } from '@/lib/storage';
 
-type SectionId = 'section1_standard' | 'section1_control' | 'section2_standard' | 'section2_control';
+
+// Helper to get a random subset of keys
+function getRandomIds<T extends Record<string, any>>(obj: T, count: number): string[] {
+  const keys = Object.keys(obj);
+  // Fisher–Yates shuffle
+  for (let i = keys.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+  }
+  return keys.slice(0, count);
+}
+
+// Pick 5 written IDs based on section2_standard (Q1..Q12)
+const WRITTEN_QUESTION_IDS = getRandomIds(
+  examData.exam.sets.section2_standard.questions,
+  5
+);
+
+// Pick 5 audio IDs based on section3_standard (Q1..Q12)
+const AUDIO_QUESTION_IDS = getRandomIds(
+  examData.exam.sets.section3_standard.questions,
+  5
+);
+
+type SectionId = 'section1_accomodation' | 'section2_standard' | 'section2_control' | 'section3_standard' | 'section3_control';
+
+function getSectionQuestions(sectionId: SectionId): Question[] {
+  const section = examData.exam.sets[sectionId];
+  let questions = Object.values(section.questions);
+
+  // Filter written sections by WRITTEN_QUESTION_IDS
+  if (sectionId === 'section2_standard' || sectionId === 'section2_control') {
+    questions = questions.filter((q) => WRITTEN_QUESTION_IDS.includes(q.id));
+  }
+
+  // Filter audio sections by AUDIO_QUESTION_IDS
+  if (sectionId === 'section3_standard' || sectionId === 'section3_control') {
+    questions = questions.filter((q) => AUDIO_QUESTION_IDS.includes(q.id));
+  }
+
+  // section1_accomodation is unchanged
+  return questions;
+}
 
 export default function Exam() {
   const { user } = useAuth();
@@ -28,7 +72,7 @@ export default function Exam() {
   const PROGRESS_PATH = (uid: string | undefined) => `examProgress/${uid}`;
   const RESULTS_PATH = (uid: string | undefined) => `examResults/${uid}`;
 
-  const [currentSection, setCurrentSection] = useState<SectionId>('section1_standard');
+  const [currentSection, setCurrentSection] = useState<SectionId>('section1_accomodation');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, { text?: string; audioUrl?: string; storagePath?: string }>>({});
   const [textAnswer, setTextAnswer] = useState('');
@@ -38,12 +82,12 @@ export default function Exam() {
 
   const sections = Object.keys(examData.exam.sets) as SectionId[];
   const currentSectionData = examData.exam.sets[currentSection];
-  const questions = Object.values(currentSectionData.questions);
+  const questions = getSectionQuestions(currentSection);
   const currentQuestion = questions[currentQuestionIndex];
   const questionKey = `${currentSection}_${currentQuestion.id}`;
 
   const totalQuestions = sections.reduce(
-    (sum, sectionId) => sum + Object.keys(examData.exam.sets[sectionId].questions).length,
+    (sum, sectionId) => sum + getSectionQuestions(sectionId).length,
     0
   );
 
@@ -137,6 +181,19 @@ export default function Exam() {
     return () => clearInterval(interval);
   }, [startTimestamp]);
 
+  useEffect(() => {
+    // Auto-speak audio questions
+    if (currentQuestion.type === 'audio' && currentQuestion.tts_text) {
+      speak(currentQuestion.tts_text);
+    }
+    return () => stop();
+  }, [currentQuestion, currentSection, currentQuestionIndex]);
+  useEffect(() => {
+    // Load existing answer for current question
+    const existingAnswer = answers[questionKey];
+    setTextAnswer(existingAnswer?.text || '');
+  }, [questionKey, answers]);
+
   const saveProgress = async (updatedAnswers?: typeof answers, cs?: SectionId, cqIdx?: number, ts?: number) => {
     if (!user) return;
     try {
@@ -153,10 +210,34 @@ export default function Exam() {
     }
   };
 
-  const handleTextAnswerSave = async () => {
-    if (!textAnswer.trim()) {
-      toast({ title: 'Answer required', description: 'Please provide an answer before continuing.', variant: 'destructive' });
-      return;
+  const handleTextAnswerSave = async() => {
+    if (currentQuestion.type === 'multiple') {
+      if (textAnswer.startsWith('other:') && textAnswer.replace('other:', '').trim() === '') {
+        toast({
+          title: 'Answer required',
+          description: 'Please specify your answer for "other".',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      if (!textAnswer) {
+        toast({
+          title: 'Answer required',
+          description: 'Please select an option before continuing.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    } else { 
+      if (!textAnswer.trim()) {
+        toast({
+          title: 'Answer required',
+          description: 'Please provide an answer before continuing.',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
     const updated = {
@@ -167,7 +248,11 @@ export default function Exam() {
     setAnswers(updated);
     await saveProgress(updated);
 
-    toast({ title: 'Answer saved', description: 'Moving to next question.' });
+    toast({
+      title: 'Answer saved',
+      description: 'Moving to next question.',
+    });
+
     handleNext();
   };
 
@@ -397,6 +482,61 @@ export default function Exam() {
                       className="resize-none"
                     />
                     <Button onClick={handleTextAnswerSave} className="w-full">
+                      Save & Continue
+                    </Button>
+                  </div>
+                )}
+
+                {currentQuestion.type === 'multiple' && currentQuestion.options && (
+                  <div className="space-y-4">
+                    <RadioGroup
+                      value={textAnswer.startsWith('other:') ? 'other' : textAnswer}
+                      onValueChange={(value) => {
+                        if (value.toLowerCase() === 'other') {
+                          setTextAnswer('other:');
+                        } else {
+                          setTextAnswer(value);
+                        }
+                      }}
+                    >
+                      <div className="space-y-3">
+                        {currentQuestion.options.map((option, index) => (
+                          <div key={index}>
+                            <div className="flex items-center space-x-3 border rounded-lg p-4 hover:bg-blue-50 hover:border-blue-200 transition-all">
+                              <RadioGroupItem value={option} id={`option-${index}`} />
+                              <Label
+                                htmlFor={`option-${index}`}
+                                className="flex-1 cursor-pointer text-base"
+                              >
+                                {option}
+                              </Label>
+                            </div>
+                            {option.toLowerCase() === 'other' &&
+                              textAnswer.startsWith('other:') && (
+                                <div className="space-y-4">
+                                  <Textarea
+                                    value={textAnswer.replace('other:', '')}
+                                    onChange={(e) =>
+                                      setTextAnswer(`other:${e.target.value}`)
+                                    }
+                                    placeholder="Please specify..."
+                                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                </div>
+                              )}
+                          </div>
+                        ))}
+                      </div>
+                    </RadioGroup>
+                    <Button
+                      onClick={handleTextAnswerSave}
+                      className="w-full"
+                      disabled={
+                        !textAnswer ||
+                        (textAnswer.startsWith('other:') &&
+                          textAnswer.replace('other:', '').trim() === '')
+                      }
+                    >
                       Save & Continue
                     </Button>
                   </div>
