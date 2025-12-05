@@ -32,7 +32,7 @@ interface AnswerData {
 
 
 // Helper to get a random subset of keys
-function getRandomIds<T extends Record<string, any>>(obj: T, count: number): string[] {
+function getRandomIds<T extends Record<string, unknown>>(obj: T, count: number): string[] {
   const keys = Object.keys(obj);
   // Fisher–Yates shuffle
   for (let i = keys.length - 1; i > 0; i--) {
@@ -42,32 +42,25 @@ function getRandomIds<T extends Record<string, any>>(obj: T, count: number): str
   return keys.slice(0, count);
 }
 
-// Pick 5 written IDs based on section2_standard (Q1..Q12)
-const WRITTEN_QUESTION_IDS = getRandomIds(
-  examData.exam.sets.section2_standard.questions,
-  5
-);
-
-// Pick 5 audio IDs based on section3_standard (Q1..Q12)
-const AUDIO_QUESTION_IDS = getRandomIds(
-  examData.exam.sets.section3_standard.questions,
-  5
-);
-
 type SectionId = 'section1_accomodation' | 'section2_standard' | 'section2_control' | 'section3_standard' | 'section3_control';
 
-function getSectionQuestions(sectionId: SectionId): Question[] {
+// Function to get section questions with given question IDs for filtering
+function getSectionQuestions(
+  sectionId: SectionId, 
+  writtenQuestionIds: string[], 
+  audioQuestionIds: string[]
+): Question[] {
   const section = examData.exam.sets[sectionId];
   let questions = Object.values(section.questions);
 
-  // Filter written sections by WRITTEN_QUESTION_IDS
+  // Filter written sections by writtenQuestionIds
   if (sectionId === 'section2_standard' || sectionId === 'section2_control') {
-    questions = questions.filter((q) => WRITTEN_QUESTION_IDS.includes(q.id));
+    questions = questions.filter((q) => writtenQuestionIds.includes(q.id));
   }
 
-  // Filter audio sections by AUDIO_QUESTION_IDS
+  // Filter audio sections by audioQuestionIds
   if (sectionId === 'section3_standard' || sectionId === 'section3_control') {
-    questions = questions.filter((q) => AUDIO_QUESTION_IDS.includes(q.id));
+    questions = questions.filter((q) => audioQuestionIds.includes(q.id));
   }
 
   // section1_accomodation is unchanged
@@ -91,6 +84,12 @@ export default function Exam() {
   const [startTimestamp, setStartTimestamp] = useState<number | null>(null);
   const [timeLeftMs, setTimeLeftMs] = useState<number>(EXAM_DURATION_MS);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isExamReady, setIsExamReady] = useState(false);
+
+  // Question IDs for filtering - persisted to Firebase
+  const [writtenQuestionIds, setWrittenQuestionIds] = useState<string[]>([]);
+  const [audioQuestionIds, setAudioQuestionIds] = useState<string[]>([]);
 
   // Tracking: when the current question was displayed
   const questionStartTimeRef = useRef<number>(Date.now());
@@ -99,17 +98,17 @@ export default function Exam() {
 
   const sections = Object.keys(examData.exam.sets) as SectionId[];
   const currentSectionData = examData.exam.sets[currentSection];
-  const questions = getSectionQuestions(currentSection);
-  const currentQuestion = questions[currentQuestionIndex];
-  const questionKey = `${currentSection}_${currentQuestion.id}`;
+  const questions = getSectionQuestions(currentSection, writtenQuestionIds, audioQuestionIds);
+  const currentQuestion = questions[currentQuestionIndex] || null;
+  const questionKey = currentQuestion ? `${currentSection}_${currentQuestion.id}` : '';
 
   const totalQuestions = sections.reduce(
-    (sum, sectionId) => sum + getSectionQuestions(sectionId).length,
+    (sum, sectionId) => sum + getSectionQuestions(sectionId, writtenQuestionIds, audioQuestionIds).length,
     0
   );
 
   const answeredCount = Object.keys(answers).length;
-  const progress = (answeredCount / totalQuestions) * 100;
+  const progress = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
 
   useEffect(() => {
     if (!user) {
@@ -149,7 +148,21 @@ export default function Exam() {
             return;
           }
 
-          // Resume in-progress exam
+          // Resume in-progress exam - restore question IDs first
+          if (data.writtenQuestionIds && Array.isArray(data.writtenQuestionIds)) {
+            setWrittenQuestionIds(data.writtenQuestionIds);
+          } else {
+            // Fallback: generate new IDs if not saved (shouldn't happen for existing progress)
+            setWrittenQuestionIds(getRandomIds(examData.exam.sets.section2_standard.questions, 5));
+          }
+          
+          if (data.audioQuestionIds && Array.isArray(data.audioQuestionIds)) {
+            setAudioQuestionIds(data.audioQuestionIds);
+          } else {
+            // Fallback: generate new IDs if not saved
+            setAudioQuestionIds(getRandomIds(examData.exam.sets.section3_standard.questions, 5));
+          }
+
           if (data.answers) setAnswers(data.answers);
           if (data.currentSection) setCurrentSection(data.currentSection as SectionId);
           if (typeof data.currentQuestionIndex === 'number') setCurrentQuestionIndex(data.currentQuestionIndex);
@@ -161,11 +174,20 @@ export default function Exam() {
             if (remaining <= 0) {
               // Time's up, auto-submit
               toast({ title: 'Time is up', description: 'Exam time expired. Submitting your answers.' });
-              handleSubmit();
+              setIsExamReady(true);
+              // We'll submit after state is set
+              return;
             }
           }
+          setIsExamReady(true);
         } else {
-          // No progress — set start timestamp now and save
+          // No progress — generate new question IDs and start fresh
+          const newWrittenIds = getRandomIds(examData.exam.sets.section2_standard.questions, 5);
+          const newAudioIds = getRandomIds(examData.exam.sets.section3_standard.questions, 5);
+          
+          setWrittenQuestionIds(newWrittenIds);
+          setAudioQuestionIds(newAudioIds);
+          
           const ts = Date.now();
           setStartTimestamp(ts);
           await set(ref(database, PROGRESS_PATH(user.id)), {
@@ -174,7 +196,10 @@ export default function Exam() {
             currentQuestionIndex,
             answers: {},
             submitted: false,
+            writtenQuestionIds: newWrittenIds,
+            audioQuestionIds: newAudioIds,
           });
+          setIsExamReady(true);
         }
       } catch (err) {
         console.error('Error loading progress:', err);
@@ -200,6 +225,8 @@ export default function Exam() {
 
   useEffect(() => {
     // Track question start time and auto-speak audio questions
+    if (!currentQuestion) return;
+    
     questionStartTimeRef.current = Date.now();
     currentAudioDurationRef.current = null;
 
@@ -231,6 +258,8 @@ export default function Exam() {
         submitted: false,
         tabChangeEvents: tabEvents ?? tabChangeEvents,
         tabChangeCount: tabEvents?.filter((e) => e.wasHidden).length ?? tabChangeCount,
+        writtenQuestionIds,
+        audioQuestionIds,
       };
       await set(ref(database, PROGRESS_PATH(user.id)), payload);
     } catch (err) {
@@ -251,6 +280,8 @@ export default function Exam() {
   }, []);
 
   const handleTextAnswerSave = async() => {
+    if (!currentQuestion) return;
+    
     if (currentQuestion.type === 'multiple') {
       if (textAnswer.startsWith('other:') && textAnswer.replace('other:', '').trim() === '') {
         toast({
@@ -280,31 +311,37 @@ export default function Exam() {
       }
     }
 
-    const updated = {
-      ...answers,
-      [questionKey]: { 
-        text: textAnswer,
-        ...createAnswerMetadata(),
-      },
-    };
+    setIsSaving(true);
+    try {
+      const updated = {
+        ...answers,
+        [questionKey]: { 
+          text: textAnswer,
+          ...createAnswerMetadata(),
+        },
+      };
 
-    setAnswers(updated);
-    await saveProgress(updated);
+      setAnswers(updated);
+      await saveProgress(updated);
 
-    toast({
-      title: 'Answer saved',
-      description: 'Moving to next question.',
-    });
+      toast({
+        title: 'Answer saved',
+        description: 'Moving to next question.',
+      });
 
-    handleNext();
+      handleNext();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAudioRecorded = async (blob: Blob) => {
-    if (!user) {
+    if (!user || !currentQuestion) {
       toast({ title: 'Not authenticated', description: 'Please sign in to submit audio.', variant: 'destructive' });
       return;
     }
 
+    setIsSaving(true);
     try {
       console.log('Uploading audio to Storage...');
       const storagePath = `examAnswers/${user.id}/${questionKey}/${Date.now()}.webm`;
@@ -342,43 +379,63 @@ export default function Exam() {
         console.warn('STT failed, audio retained for manual processing', sttErr);
       }
 
-      if (import.meta.env.VITE_AUTO_NEXT_AFTER_SPEECH === 'true') {
-        handleNext();
-      }
+      // Always advance to next question after audio is saved
+      handleNext();
     } catch (error) {
       console.error('Error processing speech:', error);
       toast({ title: 'Audio upload failed', description: error instanceof Error ? error.message : 'Failed to upload audio.', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleNext = () => {
+    let newSection = currentSection;
+    let newIndex = currentQuestionIndex;
+    
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex((prev) => prev + 1);
+      newIndex = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(newIndex);
       setTextAnswer('');
     } else {
       // Move to next section
       const currentSectionIdx = sections.indexOf(currentSection);
       if (currentSectionIdx < sections.length - 1) {
-        setCurrentSection(sections[currentSectionIdx + 1]);
+        newSection = sections[currentSectionIdx + 1];
+        newIndex = 0;
+        setCurrentSection(newSection);
         setCurrentQuestionIndex(0);
         setTextAnswer('');
       }
     }
+    
+    // Save position progress
+    saveProgress(undefined, newSection, newIndex);
   };
 
   const handlePrevious = () => {
+    let newSection = currentSection;
+    let newIndex = currentQuestionIndex;
+    
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex((prev) => prev - 1);
+      newIndex = currentQuestionIndex - 1;
+      setCurrentQuestionIndex(newIndex);
     } else {
       // Move to previous section
       const currentSectionIdx = sections.indexOf(currentSection);
       if (currentSectionIdx > 0) {
         const prevSection = sections[currentSectionIdx - 1];
+        newSection = prevSection;
+        // Use filtered questions length for previous section
+        const prevQuestions = getSectionQuestions(prevSection, writtenQuestionIds, audioQuestionIds);
+        newIndex = prevQuestions.length - 1;
         setCurrentSection(prevSection);
-        const prevQuestions = Object.values(examData.exam.sets[prevSection].questions);
-        setCurrentQuestionIndex(prevQuestions.length - 1);
+        setCurrentQuestionIndex(newIndex);
       }
     }
+    
+    // Save position progress
+    saveProgress(undefined, newSection, newIndex);
   };
 
   const calculateScore = () => {
@@ -480,6 +537,26 @@ export default function Exam() {
     currentSection === sections[sections.length - 1] &&
     currentQuestionIndex === questions.length - 1;
 
+  // Show loading state while exam is being initialized
+  if (!isExamReady || !currentQuestion) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <main className="container mx-auto px-4 py-8 max-w-4xl">
+          <Card>
+            <CardHeader>
+              <CardTitle>{examData.exam.title}</CardTitle>
+              <CardDescription>Loading your exam...</CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center justify-center py-12">
+              <div className="text-muted-foreground">Please wait while we load your exam progress...</div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -533,9 +610,10 @@ export default function Exam() {
                       placeholder="Type your answer here..."
                       rows={6}
                       className="resize-none"
+                      disabled={isSaving}
                     />
-                    <Button onClick={handleTextAnswerSave} className="w-full">
-                      Save & Continue
+                    <Button onClick={handleTextAnswerSave} className="w-full" disabled={isSaving}>
+                      {isSaving ? 'Saving...' : 'Save & Continue'}
                     </Button>
                   </div>
                 )}
@@ -551,12 +629,13 @@ export default function Exam() {
                           setTextAnswer(value);
                         }
                       }}
+                      disabled={isSaving}
                     >
                       <div className="space-y-3">
                         {currentQuestion.options.map((option, index) => (
                           <div key={index}>
                             <div className="flex items-center space-x-3 border rounded-lg p-4 hover:bg-blue-50 hover:border-blue-200 transition-all">
-                              <RadioGroupItem value={option} id={`option-${index}`} />
+                              <RadioGroupItem value={option} id={`option-${index}`} disabled={isSaving} />
                               <Label
                                 htmlFor={`option-${index}`}
                                 className="flex-1 cursor-pointer text-base"
@@ -574,6 +653,7 @@ export default function Exam() {
                                     }
                                     placeholder="Please specify..."
                                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                                    disabled={isSaving}
                                   />
                                 </div>
                               )}
@@ -585,18 +665,19 @@ export default function Exam() {
                       onClick={handleTextAnswerSave}
                       className="w-full"
                       disabled={
+                        isSaving ||
                         !textAnswer ||
                         (textAnswer.startsWith('other:') &&
                           textAnswer.replace('other:', '').trim() === '')
                       }
                     >
-                      Save & Continue
+                      {isSaving ? 'Saving...' : 'Save & Continue'}
                     </Button>
                   </div>
                 )}
 
                 {currentQuestion.type === 'audio' && (
-                  <AudioRecorder onAudioRecorded={handleAudioRecorded} />
+                  <AudioRecorder onAudioRecorded={handleAudioRecorded} disabled={isSaving} />
                 )}
               </CardContent>
             </Card>
@@ -605,19 +686,19 @@ export default function Exam() {
               <Button
                 variant="outline"
                 onClick={handlePrevious}
-                disabled={isFirstQuestion}
+                disabled={isFirstQuestion || isSaving}
               >
                 <ChevronLeft className="mr-2 h-4 w-4" />
                 Previous
               </Button>
 
               {!isLastQuestion ? (
-                <Button variant="outline" onClick={handleNext}>
+                <Button variant="outline" onClick={handleNext} disabled={isSaving}>
                   Skip
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button onClick={handleSubmit} disabled={isSubmitting}>
+                <Button onClick={handleSubmit} disabled={isSubmitting || isSaving}>
                   {isSubmitting ? 'Submitting...' : 'Submit Exam'}
                 </Button>
               )}
