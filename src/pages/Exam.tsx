@@ -32,7 +32,7 @@ interface AnswerData {
 
 
 // Helper to get a random subset of keys
-function getRandomIds<T extends Record<string, unknown>>(obj: T, count: number): string[] {
+function getRandomIds<T extends Record<string, { id: string }>>(obj: T, count: number): string[] {
   const keys = Object.keys(obj);
   // Fisher–Yates shuffle
   for (let i = keys.length - 1; i > 0; i--) {
@@ -86,6 +86,7 @@ export default function Exam() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExamReady, setIsExamReady] = useState(false);
+  const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
 
   // Question IDs for filtering - persisted to Firebase
   const [writtenQuestionIds, setWrittenQuestionIds] = useState<string[]>([]);
@@ -172,11 +173,9 @@ export default function Exam() {
             const remaining = Math.max(EXAM_DURATION_MS - elapsed, 0);
             setTimeLeftMs(remaining);
             if (remaining <= 0) {
-              // Time's up, auto-submit
+              // Time's up, flag for auto-submit after state is ready
               toast({ title: 'Time is up', description: 'Exam time expired. Submitting your answers.' });
-              setIsExamReady(true);
-              // We'll submit after state is set
-              return;
+              setShouldAutoSubmit(true);
             }
           }
           setIsExamReady(true);
@@ -206,6 +205,13 @@ export default function Exam() {
       }
     })();
   }, [user, navigate]);
+
+  // Auto-submit when time expired during restoration
+  useEffect(() => {
+    if (shouldAutoSubmit && isExamReady) {
+      handleSubmit();
+    }
+  }, [shouldAutoSubmit, isExamReady]);
 
   // Timer tick
   useEffect(() => {
@@ -247,17 +253,26 @@ export default function Exam() {
     setTextAnswer(existingAnswer?.text || '');
   }, [questionKey, answers]);
 
-  const saveProgress = async (updatedAnswers?: typeof answers, cs?: SectionId, cqIdx?: number, ts?: number, tabEvents?: TabChangeEvent[]) => {
+  interface SaveProgressOptions {
+    updatedAnswers?: typeof answers;
+    newSection?: SectionId;
+    newQuestionIndex?: number;
+    newTimestamp?: number;
+    newTabEvents?: TabChangeEvent[];
+  }
+
+  const saveProgress = async (options: SaveProgressOptions = {}) => {
     if (!user) return;
+    const { updatedAnswers, newSection, newQuestionIndex, newTimestamp, newTabEvents } = options;
     try {
       const payload = {
-        startTimestamp: ts ?? startTimestamp,
-        currentSection: cs ?? currentSection,
-        currentQuestionIndex: typeof cqIdx === 'number' ? cqIdx : currentQuestionIndex,
+        startTimestamp: newTimestamp ?? startTimestamp,
+        currentSection: newSection ?? currentSection,
+        currentQuestionIndex: typeof newQuestionIndex === 'number' ? newQuestionIndex : currentQuestionIndex,
         answers: updatedAnswers ?? answers,
         submitted: false,
-        tabChangeEvents: tabEvents ?? tabChangeEvents,
-        tabChangeCount: tabEvents?.filter((e) => e.wasHidden).length ?? tabChangeCount,
+        tabChangeEvents: newTabEvents ?? tabChangeEvents,
+        tabChangeCount: newTabEvents?.filter((e) => e.wasHidden).length ?? tabChangeCount,
         writtenQuestionIds,
         audioQuestionIds,
       };
@@ -322,7 +337,7 @@ export default function Exam() {
       };
 
       setAnswers(updated);
-      await saveProgress(updated);
+      await saveProgress({ updatedAnswers: updated });
 
       toast({
         title: 'Answer saved',
@@ -360,7 +375,7 @@ export default function Exam() {
         },
       };
       setAnswers(partial);
-      await saveProgress(partial);
+      await saveProgress({ updatedAnswers: partial });
 
       toast({ title: 'Audio uploaded', description: 'Stored audio will be processed for transcription.' });
 
@@ -372,7 +387,7 @@ export default function Exam() {
         if (text) {
           const withText = { ...partial, [questionKey]: { ...partial[questionKey], text } };
           setAnswers(withText);
-          await saveProgress(withText);
+          await saveProgress({ updatedAnswers: withText });
           toast({ title: 'Transcription saved', description: 'Speech-to-text processed (may be manual-reviewed).' });
         }
       } catch (sttErr) {
@@ -410,7 +425,7 @@ export default function Exam() {
     }
     
     // Save position progress
-    saveProgress(undefined, newSection, newIndex);
+    saveProgress({ newSection, newQuestionIndex: newIndex });
   };
 
   const handlePrevious = () => {
@@ -435,7 +450,7 @@ export default function Exam() {
     }
     
     // Save position progress
-    saveProgress(undefined, newSection, newIndex);
+    saveProgress({ newSection, newQuestionIndex: newIndex });
   };
 
   const calculateScore = () => {
