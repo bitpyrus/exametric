@@ -286,13 +286,24 @@ export default function Exam() {
   const createAnswerMetadata = useCallback((): Partial<AnswerData> => {
     const now = Date.now();
     const timeToAnswerMs = now - questionStartTimeRef.current;
-    return {
+    const metadata: Partial<AnswerData> = {
       timeToAnswerMs,
       questionDisplayedAt: new Date(questionStartTimeRef.current).toISOString(),
       answeredAt: new Date(now).toISOString(),
-      audioQuestionDurationMs: currentAudioDurationRef.current ?? undefined,
     };
+    // Only include audioQuestionDurationMs if it has a value (Firebase doesn't accept undefined)
+    if (currentAudioDurationRef.current !== null) {
+      metadata.audioQuestionDurationMs = currentAudioDurationRef.current;
+    }
+    return metadata;
   }, []);
+
+  // Helper to check if we're on the last question of the exam
+  const checkIsLastQuestion = useCallback(() => {
+    const isLastSection = currentSection === sections[sections.length - 1];
+    const isLastQuestionInSection = currentQuestionIndex === questions.length - 1;
+    return isLastSection && isLastQuestionInSection;
+  }, [currentSection, currentQuestionIndex, questions.length, sections]);
 
   const handleTextAnswerSave = async() => {
     if (!currentQuestion) return;
@@ -339,12 +350,19 @@ export default function Exam() {
       setAnswers(updated);
       await saveProgress({ updatedAnswers: updated });
 
-      toast({
-        title: 'Answer saved',
-        description: 'Moving to next question.',
-      });
-
-      handleNext();
+      if (checkIsLastQuestion()) {
+        // This was the last question - prompt to submit
+        toast({
+          title: 'Last question answered',
+          description: 'Click "Submit Exam" to complete your exam.',
+        });
+      } else {
+        toast({
+          title: 'Answer saved',
+          description: 'Moving to next question.',
+        });
+        handleNext();
+      }
     } finally {
       setIsSaving(false);
     }
@@ -394,8 +412,13 @@ export default function Exam() {
         console.warn('STT failed, audio retained for manual processing', sttErr);
       }
 
-      // Always advance to next question after audio is saved
-      handleNext();
+      if (checkIsLastQuestion()) {
+        // This was the last question - prompt to submit
+        toast({ title: 'Last question answered', description: 'Click "Submit Exam" to complete your exam.' });
+      } else {
+        // Advance to next question
+        handleNext();
+      }
     } catch (error) {
       console.error('Error processing speech:', error);
       toast({ title: 'Audio upload failed', description: error instanceof Error ? error.message : 'Failed to upload audio.', variant: 'destructive' });
@@ -548,9 +571,7 @@ export default function Exam() {
   };
 
   const isFirstQuestion = currentSection === sections[0] && currentQuestionIndex === 0;
-  const isLastQuestion =
-    currentSection === sections[sections.length - 1] &&
-    currentQuestionIndex === questions.length - 1;
+  const isLastQuestion = checkIsLastQuestion();
 
   // Show loading state while exam is being initialized
   if (!isExamReady || !currentQuestion) {
@@ -692,7 +713,7 @@ export default function Exam() {
                 )}
 
                 {currentQuestion.type === 'audio' && (
-                  <AudioRecorder onAudioRecorded={handleAudioRecorded} disabled={isSaving} />
+                  <AudioRecorder onAudioRecorded={handleAudioRecorded} disabled={isSaving || isSubmitting} />
                 )}
               </CardContent>
             </Card>
