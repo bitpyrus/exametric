@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { examData, Question } from '@/data/examQuestions';
@@ -11,12 +11,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Volume2, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useTabVisibility, TabChangeEvent } from '@/hooks/useTabVisibility';
 import { useToast } from '@/hooks/use-toast';
 import { database } from '@/lib/firebase';
 import { ref, push, set, get } from 'firebase/database';
 import Navigation from '@/components/Navigation';
 import { uploadAudioForTranscription } from '@/lib/speechApi';
 import { uploadAudioBlob } from '@/lib/storage';
+
+// Interface for answer data with tracking metadata
+interface AnswerData {
+  text?: string;
+  audioUrl?: string;
+  storagePath?: string;
+  timeToAnswerMs?: number;
+  questionDisplayedAt?: string;
+  answeredAt?: string;
+  audioQuestionDurationMs?: number;
+}
 
 
 // Helper to get a random subset of keys
@@ -67,18 +79,23 @@ export default function Exam() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { speak, stop, isSpeaking } = useTextToSpeech();
+  const { tabChangeEvents, tabChangeCount } = useTabVisibility();
 
   const EXAM_DURATION_MS = 20 * 60 * 1000; // 20 minutes
   const PROGRESS_PATH = (uid: string | undefined) => `examProgress/${uid}`;
-  const RESULTS_PATH = (uid: string | undefined) => `examResults/${uid}`;
 
   const [currentSection, setCurrentSection] = useState<SectionId>('section1_accomodation');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, { text?: string; audioUrl?: string; storagePath?: string }>>({});
+  const [answers, setAnswers] = useState<Record<string, AnswerData>>({});
   const [textAnswer, setTextAnswer] = useState('');
   const [startTimestamp, setStartTimestamp] = useState<number | null>(null);
   const [timeLeftMs, setTimeLeftMs] = useState<number>(EXAM_DURATION_MS);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Tracking: when the current question was displayed
+  const questionStartTimeRef = useRef<number>(Date.now());
+  // Tracking: audio question duration for current question
+  const currentAudioDurationRef = useRef<number | null>(null);
 
   const sections = Object.keys(examData.exam.sets) as SectionId[];
   const currentSectionData = examData.exam.sets[currentSection];
@@ -182,19 +199,28 @@ export default function Exam() {
   }, [startTimestamp]);
 
   useEffect(() => {
-    // Auto-speak audio questions
+    // Track question start time and auto-speak audio questions
+    questionStartTimeRef.current = Date.now();
+    currentAudioDurationRef.current = null;
+
     if (currentQuestion.type === 'audio' && currentQuestion.tts_text) {
-      speak(currentQuestion.tts_text);
+      speak(currentQuestion.tts_text).then((result) => {
+        // Store the duration of the audio question
+        currentAudioDurationRef.current = result.durationMs;
+      }).catch(() => {
+        // Speech synthesis failed, but we continue
+      });
     }
     return () => stop();
-  }, [currentQuestion, currentSection, currentQuestionIndex]);
+  }, [currentQuestion, currentSection, currentQuestionIndex, speak, stop]);
+
   useEffect(() => {
     // Load existing answer for current question
     const existingAnswer = answers[questionKey];
     setTextAnswer(existingAnswer?.text || '');
   }, [questionKey, answers]);
 
-  const saveProgress = async (updatedAnswers?: typeof answers, cs?: SectionId, cqIdx?: number, ts?: number) => {
+  const saveProgress = async (updatedAnswers?: typeof answers, cs?: SectionId, cqIdx?: number, ts?: number, tabEvents?: TabChangeEvent[]) => {
     if (!user) return;
     try {
       const payload = {
@@ -203,12 +229,26 @@ export default function Exam() {
         currentQuestionIndex: typeof cqIdx === 'number' ? cqIdx : currentQuestionIndex,
         answers: updatedAnswers ?? answers,
         submitted: false,
-      } as any;
+        tabChangeEvents: tabEvents ?? tabChangeEvents,
+        tabChangeCount: tabEvents?.filter((e) => e.wasHidden).length ?? tabChangeCount,
+      };
       await set(ref(database, PROGRESS_PATH(user.id)), payload);
     } catch (err) {
       console.error('Error saving progress:', err);
     }
   };
+
+  // Helper to calculate time to answer and create answer metadata
+  const createAnswerMetadata = useCallback((): Partial<AnswerData> => {
+    const now = Date.now();
+    const timeToAnswerMs = now - questionStartTimeRef.current;
+    return {
+      timeToAnswerMs,
+      questionDisplayedAt: new Date(questionStartTimeRef.current).toISOString(),
+      answeredAt: new Date(now).toISOString(),
+      audioQuestionDurationMs: currentAudioDurationRef.current ?? undefined,
+    };
+  }, []);
 
   const handleTextAnswerSave = async() => {
     if (currentQuestion.type === 'multiple') {
@@ -242,7 +282,10 @@ export default function Exam() {
 
     const updated = {
       ...answers,
-      [questionKey]: { text: textAnswer },
+      [questionKey]: { 
+        text: textAnswer,
+        ...createAnswerMetadata(),
+      },
     };
 
     setAnswers(updated);
@@ -267,10 +310,17 @@ export default function Exam() {
       const storagePath = `examAnswers/${user.id}/${questionKey}/${Date.now()}.webm`;
       const { url: audioUrl, path } = await uploadAudioBlob(blob, storagePath);
 
+      // Get answer metadata including time to answer and audio question duration
+      const answerMetadata = createAnswerMetadata();
+
       // Save audio URL to answers immediately to preserve data even if STT fails
       const partial = {
         ...answers,
-        [questionKey]: { audioUrl, storagePath: path },
+        [questionKey]: { 
+          audioUrl, 
+          storagePath: path,
+          ...answerMetadata,
+        },
       };
       setAnswers(partial);
       await saveProgress(partial);
@@ -356,16 +406,16 @@ export default function Exam() {
 
       if (userAnswer.text) {
         const normalizedUserAnswer = userAnswer.text.toLowerCase().trim();
-        const isCorrect = question.answers.some(
+        const isCorrect = question.answers?.some(
           (ans) => ans.toLowerCase().trim() === normalizedUserAnswer
-        );
+        ) ?? false;
         
         if (isCorrect) correctAnswers++;
         
         analysis[questionKey] = {
           correct: isCorrect,
           userAnswer: userAnswer.text,
-          expectedAnswers: question.answers,
+          expectedAnswers: question.answers ?? [],
         };
       }
     });
@@ -384,7 +434,7 @@ export default function Exam() {
     setIsSubmitting(true);
 
     try {
-      const timeSpent = Math.floor(((startTimestamp ?? Date.now()) - (startTimestamp ?? Date.now())) / 1000);
+      const timeSpent = startTimestamp ? Math.floor((Date.now() - startTimestamp) / 1000) : 0;
       const { correctAnswers, analysis } = calculateScore();
       const score = Object.keys(answers).length > 0 ? Math.round((correctAnswers / Object.keys(answers).length) * 100) : 0;
 
@@ -399,6 +449,9 @@ export default function Exam() {
         timeSpent,
         totalQuestions,
         answeredCount: Object.keys(answers).length,
+        // Tab change tracking data
+        tabChangeEvents,
+        tabChangeCount,
       };
 
       const resultsRef = ref(database, `examResults/${user.id}`);

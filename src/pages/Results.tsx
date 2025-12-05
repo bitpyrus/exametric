@@ -7,7 +7,22 @@ import { Badge } from '@/components/ui/badge';
 import { database } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import Navigation from '@/components/Navigation';
-import { Clock, CheckCircle2, FileText, Mic, Award, XCircle, Target } from 'lucide-react';
+import { Clock, CheckCircle2, FileText, Mic, Award, XCircle, Target, Eye } from 'lucide-react';
+
+interface TabChangeEvent {
+  timestamp: string;
+  wasHidden: boolean;
+  durationHiddenMs?: number;
+}
+
+interface AnswerData {
+  text?: string;
+  audioUrl?: string;
+  timeToAnswerMs?: number;
+  questionDisplayedAt?: string;
+  answeredAt?: string;
+  audioQuestionDurationMs?: number;
+}
 
 interface ExamResult {
   id: string;
@@ -17,8 +32,10 @@ interface ExamResult {
   answeredCount: number;
   score?: number;
   correctAnswers?: number;
-  analysis?: Record<string, { correct: boolean; userAnswer: string; expectedAnswers: string[] }>;
-  answers: Record<string, { text?: string; audioUrl?: string }>;
+  analysis?: Record<string, { correct: boolean; userAnswer: string; expectedAnswers?: string[] }>;
+  answers: Record<string, AnswerData>;
+  tabChangeEvents?: TabChangeEvent[];
+  tabChangeCount?: number;
 }
 
 export default function Results() {
@@ -70,7 +87,9 @@ export default function Results() {
                 score: toNumberOrUndefined(valObj.score),
                 correctAnswers: toNumberOrUndefined(valObj.correctAnswers),
                 analysis: (valObj.analysis && typeof valObj.analysis === 'object') ? (valObj.analysis as Record<string, { correct: boolean; userAnswer: string; expectedAnswers: string[] }>) : undefined,
-                answers: (valObj.answers && typeof valObj.answers === 'object') ? (valObj.answers as Record<string, { text?: string; audioUrl?: string }>) : {},
+                answers: (valObj.answers && typeof valObj.answers === 'object') ? (valObj.answers as Record<string, AnswerData>) : {},
+                tabChangeEvents: Array.isArray(valObj.tabChangeEvents) ? (valObj.tabChangeEvents as TabChangeEvent[]) : undefined,
+                tabChangeCount: toNumberOrUndefined(valObj.tabChangeCount),
               };
 
               fetchedResults.push(entry);
@@ -102,6 +121,16 @@ export default function Results() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
+  };
+
+  const formatTimeMs = (ms: number) => {
+    if (!ms || ms < 0 || !Number.isFinite(ms)) return '0ms';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    const seconds = Math.floor(ms / 1000);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
   };
 
   const formatDate = (timestamp: string) => {
@@ -246,6 +275,20 @@ export default function Results() {
                           </p>
                         </div>
                       </div>
+
+                      {typeof selectedResult.tabChangeCount === 'number' && (
+                        <div className="flex items-center gap-3">
+                          <Eye className="h-8 w-8 text-primary" />
+                          <div>
+                            <p className="text-2xl font-bold">
+                              {selectedResult.tabChangeCount}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Tab Switches
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -260,32 +303,45 @@ export default function Results() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      {Object.entries(selectedResult.analysis ?? {}).map(([key, result]) => (
-                        <div key={key} className="border rounded-lg p-4 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-semibold text-muted-foreground">
-                              {key}
-                            </p>
-                            <Badge variant={result.correct ? "default" : "destructive"}>
-                              {result.correct ? (
-                                <><CheckCircle2 className="h-3 w-3 mr-1" /> Correct</>
-                              ) : (
-                                <><XCircle className="h-3 w-3 mr-1" /> Incorrect</>
-                              )}
-                            </Badge>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-sm">
-                              <span className="font-medium">Your answer:</span> {result.userAnswer}
-                            </p>
-                            {!result.correct && result.userAnswer !== 'Audio response' && (
-                              <p className="text-sm text-muted-foreground">
-                                <span className="font-medium">Expected:</span> {result.expectedAnswers.join(' or ')}
+                      {Object.entries(selectedResult.analysis ?? {}).map(([key, result]) => {
+                        const answerData = selectedResult.answers[key];
+                        return (
+                          <div key={key} className="border rounded-lg p-4 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-semibold text-muted-foreground">
+                                {key}
                               </p>
-                            )}
+                              <Badge variant={result.correct ? "default" : "destructive"}>
+                                {result.correct ? (
+                                  <><CheckCircle2 className="h-3 w-3 mr-1" /> Correct</>
+                                ) : (
+                                  <><XCircle className="h-3 w-3 mr-1" /> Incorrect</>
+                                )}
+                              </Badge>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm">
+                                <span className="font-medium">Your answer:</span> {result.userAnswer}
+                              </p>
+                              {!result.correct && result.userAnswer !== 'Audio response' && result.expectedAnswers && result.expectedAnswers.length > 0 && (
+                                <p className="text-sm text-muted-foreground">
+                                  <span className="font-medium">Expected:</span> {result.expectedAnswers.join(' or ')}
+                                </p>
+                              )}
+                              {answerData?.timeToAnswerMs && (
+                                <p className="text-sm text-muted-foreground">
+                                  <span className="font-medium">Time to answer:</span> {formatTimeMs(answerData.timeToAnswerMs)}
+                                </p>
+                              )}
+                              {answerData?.audioQuestionDurationMs && (
+                                <p className="text-sm text-muted-foreground">
+                                  <span className="font-medium">Audio question duration:</span> {formatTimeMs(answerData.audioQuestionDurationMs)}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </CardContent>
                   </Card>
                 )}
@@ -306,6 +362,11 @@ export default function Results() {
                             {key}
                           </p>
                           <p className="text-sm">{answer.text}</p>
+                          {answer.timeToAnswerMs && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Time to answer: {formatTimeMs(answer.timeToAnswerMs)}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </CardContent>
@@ -328,6 +389,18 @@ export default function Results() {
                             {key}
                           </p>
                           <audio src={answer.audioUrl} controls className="w-full" />
+                          <div className="flex gap-4 mt-1">
+                            {answer.timeToAnswerMs && (
+                              <p className="text-xs text-muted-foreground">
+                                Time to answer: {formatTimeMs(answer.timeToAnswerMs)}
+                              </p>
+                            )}
+                            {answer.audioQuestionDurationMs && (
+                              <p className="text-xs text-muted-foreground">
+                                Audio question: {formatTimeMs(answer.audioQuestionDurationMs)}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </CardContent>
