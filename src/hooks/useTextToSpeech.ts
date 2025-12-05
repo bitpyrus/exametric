@@ -45,10 +45,10 @@ export const useTextToSpeech = () => {
         resolve({ durationMs });
       };
 
-      utterance.onerror = (event) => {
+      utterance.onerror = () => {
         setIsSpeaking(false);
         speechStartTimeRef.current = null;
-        reject(new Error(event.error || 'Speech synthesis error'));
+        reject(new Error('Speech synthesis error'));
       };
 
       window.speechSynthesis.speak(utterance);

@@ -124,7 +124,8 @@ export default function Results() {
   };
 
   const formatTimeMs = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
+    if (!ms || ms < 0 || !Number.isFinite(ms)) return '0ms';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
     const seconds = Math.floor(ms / 1000);
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
