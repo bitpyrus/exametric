@@ -406,16 +406,16 @@ export default function Exam() {
 
       if (userAnswer.text) {
         const normalizedUserAnswer = userAnswer.text.toLowerCase().trim();
-        const isCorrect = question.answers.some(
+        const isCorrect = question.answers?.some(
           (ans) => ans.toLowerCase().trim() === normalizedUserAnswer
-        );
+        ) ?? false;
         
         if (isCorrect) correctAnswers++;
         
         analysis[questionKey] = {
           correct: isCorrect,
           userAnswer: userAnswer.text,
-          expectedAnswers: question.answers,
+          expectedAnswers: question.answers ?? [],
         };
       }
     });

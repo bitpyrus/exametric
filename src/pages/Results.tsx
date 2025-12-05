@@ -32,7 +32,7 @@ interface ExamResult {
   answeredCount: number;
   score?: number;
   correctAnswers?: number;
-  analysis?: Record<string, { correct: boolean; userAnswer: string; expectedAnswers: string[] }>;
+  analysis?: Record<string, { correct: boolean; userAnswer: string; expectedAnswers?: string[] }>;
   answers: Record<string, AnswerData>;
   tabChangeEvents?: TabChangeEvent[];
   tabChangeCount?: number;
@@ -323,7 +323,7 @@ export default function Results() {
                               <p className="text-sm">
                                 <span className="font-medium">Your answer:</span> {result.userAnswer}
                               </p>
-                              {!result.correct && result.userAnswer !== 'Audio response' && (
+                              {!result.correct && result.userAnswer !== 'Audio response' && result.expectedAnswers && result.expectedAnswers.length > 0 && (
                                 <p className="text-sm text-muted-foreground">
                                   <span className="font-medium">Expected:</span> {result.expectedAnswers.join(' or ')}
                                 </p>
