@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { database } from '@/lib/firebase';
 import { ref, get } from 'firebase/database';
 import Navigation from '@/components/Navigation';
-import { Clock, CheckCircle2, FileText, Mic, Award, XCircle, Target, Eye } from 'lucide-react';
+import { Clock, FileText, Mic, Eye } from 'lucide-react';
 
 interface TabChangeEvent {
   timestamp: string;
@@ -225,33 +224,7 @@ export default function Results() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid gap-4 md:grid-cols-4">
-                      {selectedResult.score !== undefined && (
-                        <div className="flex items-center gap-3">
-                          <Award className="h-8 w-8 text-accent" />
-                          <div>
-                            <p className="text-2xl font-bold">
-                              {selectedResult.score}%
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Score
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center gap-3">
-                        <Target className="h-8 w-8 text-primary" />
-                        <div>
-                          <p className="text-2xl font-bold">
-                            {selectedResult.correctAnswers || 0}/{selectedResult.answeredCount}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Correct Answers
-                          </p>
-                        </div>
-                      </div>
-                      
+                    <div className="grid gap-4 md:grid-cols-3">
                       <div className="flex items-center gap-3">
                         <Clock className="h-8 w-8 text-primary" />
                         <div>
@@ -299,7 +272,7 @@ export default function Results() {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <FileText className="h-5 w-5" />
-                        Answer Analysis ({Object.keys(selectedResult.analysis ?? {}).length})
+                        Your Answers ({Object.keys(selectedResult.analysis ?? {}).length})
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -311,23 +284,11 @@ export default function Results() {
                               <p className="text-sm font-semibold text-muted-foreground">
                                 {key}
                               </p>
-                              <Badge variant={result.correct ? "default" : "destructive"}>
-                                {result.correct ? (
-                                  <><CheckCircle2 className="h-3 w-3 mr-1" /> Correct</>
-                                ) : (
-                                  <><XCircle className="h-3 w-3 mr-1" /> Incorrect</>
-                                )}
-                              </Badge>
                             </div>
                             <div className="space-y-1">
                               <p className="text-sm">
                                 <span className="font-medium">Your answer:</span> {result.userAnswer}
                               </p>
-                              {!result.correct && result.userAnswer !== 'Audio response' && result.expectedAnswers && result.expectedAnswers.length > 0 && (
-                                <p className="text-sm text-muted-foreground">
-                                  <span className="font-medium">Expected:</span> {result.expectedAnswers.join(' or ')}
-                                </p>
-                              )}
                               {answerData?.timeToAnswerMs && (
                                 <p className="text-sm text-muted-foreground">
                                   <span className="font-medium">Time to answer:</span> {formatTimeMs(answerData.timeToAnswerMs)}
