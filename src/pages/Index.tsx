@@ -130,13 +130,13 @@ const Index = () => {
             </CardHeader>
             <CardContent className="text-center space-y-6">
               <p className="text-muted-foreground leading-relaxed text-lg max-w-2xl mx-auto">
-                Examertric is a comprehensive platform for computer knowledge assessment. 
+                Exametric is a comprehensive platform for computer knowledge assessment. 
                 Take exams with both written and audio questions, receive instant feedback with scores,
                 and track your performance over time. Perfect for students preparing for technical interviews
                 and educators assessing student knowledge.
               </p>
               <Button asChild variant="outline" size="lg" className="hover:bg-primary hover:text-primary-foreground transition-colors">
-                <Link to="/about">Learn More About Examertric</Link>
+                <Link to="/about">Learn More About Exametric</Link>
               </Button>
             </CardContent>
           </Card>

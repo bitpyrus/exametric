@@ -30,7 +30,7 @@ const About = () => {
             </CardHeader>
             <CardContent className="space-y-4 md:space-y-6">
               <p className="leading-relaxed text-base md:text-lg">
-                Examertric is an educational research platform designed to help students, teachers, and researchers 
+                Exametric is an educational research platform designed to help students, teachers, and researchers 
                 explore how students perform and feel about different assessment methods—specifically comparing 
                 <strong className="text-primary font-semibold"> oral assessments</strong> versus <strong className="text-accent font-semibold"> written assessments</strong>.
               </p>

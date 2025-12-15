@@ -31,7 +31,7 @@ const Login = () => {
           <div className="inline-flex items-center gap-2 mb-4">
             <GraduationCap className="w-10 h-10 text-primary" />
             <span className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Examertric
+              Exametric
             </span>
           </div>
           <h1 className="text-2xl font-bold text-foreground mb-2">Welcome Back</h1>

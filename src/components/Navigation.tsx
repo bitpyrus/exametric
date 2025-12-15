@@ -41,7 +41,7 @@ const Navigation = () => {
         <Link to="/" className="flex items-center space-x-2 group">
           <BarChart3 className="h-7 w-7 text-primary transition-transform group-hover:scale-110" />
           <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Examertric
+            Exametric
           </span>
         </Link>
         
