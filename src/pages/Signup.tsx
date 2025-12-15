@@ -153,7 +153,7 @@ const Signup = () => {
 
               <div>
                 <a
-                    href="https://drive.google.com/file/d/1fQbyNVnYJDJB3m5Fovc1e4AjIb1IqrcG/view?usp=sharing"
+                    href="https://drive.google.com/file/d/11ydE-tc8Wva-2b27CVLbXgRAeQGHxEqf/view?usp=sharing"
                     className="text-primary hover:text-primary/80 font-medium transition-colors"
                 >
                   Terms and Conditions
