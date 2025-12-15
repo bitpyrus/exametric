@@ -77,11 +77,11 @@ const Signup = () => {
             <div className="inline-flex items-center gap-2 mb-4">
               <GraduationCap className="w-10 h-10 text-primary" />
               <span className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Examertric
+              Exametric
             </span>
             </div>
             <h1 className="text-2xl font-bold text-foreground mb-2">Create Account</h1>
-            <p className="text-muted-foreground">Join Examertric to analyze assessment data</p>
+            <p className="text-muted-foreground">Join Exametric to analyze assessment data</p>
           </div>
 
           <div className="bg-card rounded-lg shadow-lg border border-border p-8">
